@@ -1,0 +1,141 @@
+#!/usr/bin/env node
+// 默认本地门禁编排器：按本轮改动的路径匹配任务表，只跑受影响的门禁，fail-fast。
+// 与 lime 的 verify:local 同构：
+//   - 增量模式（默认）：改动集 = 工作树 diff（含暂存）+ 相对上游 merge-base 的已提交改动 + untracked 文件；
+//   - --full：跑全部任务；
+//   - --dry-run：只打印将被选中的任务，不执行；
+//   - --only a,b：只跑指定任务；
+//   - 直接传路径：离线模式，把给定路径当作改动集。
+// 不是 git 仓库时回退为"改动集未知 → 运行全部任务"，宁可多跑不可漏跑。
+// 用法：
+//   node scripts/verify-local.mjs [--full] [--dry-run] [--only <name1,name2>] [paths...]
+
+import { execFileSync, spawnSync } from 'node:child_process';
+
+// 任务表：prefixes 为空数组 = 任何时候都跑；
+// 否则是 POSIX 风格路径前缀（相对仓库根）。Python 任务由路线图 P0 接入。
+const TASKS = [
+  {
+    name: 'file-size-governance',
+    prefixes: [], // 行数棘轮全量扫描，任何改动都跑
+    cmd: 'node scripts/check-file-size-governance.mjs',
+  },
+  {
+    name: 'scripts-baseline',
+    prefixes: ['scripts/'],
+    cmd: 'node scripts/check-scripts-baseline.mjs',
+  },
+  {
+    name: 'contracts',
+    prefixes: ['protocol/', 'src/lime_star/protocol/', 'governance/'],
+    cmd: 'node scripts/check-contracts.mjs',
+  },
+  {
+    name: 'doc-links',
+    prefixes: ['internal/', 'AGENTS.md', 'README.md', '.codex/'],
+    cmd: 'node scripts/check-doc-links.mjs',
+  },
+  // 路线图 P0 接入的 Python 任务（代码尚未创建，接入前保持注释）：
+  // { name: 'test:unit', prefixes: ['src/'], cmd: 'npm run test:unit -- --changed' },
+  // { name: 'typecheck', prefixes: ['src/', 'packages/'], cmd: 'npm run typecheck' },
+];
+
+function parseArgs(argv) {
+  const args = { full: false, dryRun: false, only: null, paths: [] };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--full') args.full = true;
+    else if (a === '--dry-run') args.dryRun = true;
+    else if (a === '--only') args.only = argv[++i].split(',').map((s) => s.trim());
+    else if (a === '--help' || a === '-h') args.help = true;
+    else args.paths.push(a);
+  }
+  return args;
+}
+
+function gitOut(repoArgs) {
+  try {
+    return execFileSync('git', repoArgs, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+  } catch {
+    return null;
+  }
+}
+
+function collectChangedPaths() {
+  const isRepo = gitOut(['rev-parse', '--is-inside-work-tree'])?.trim() === 'true';
+  if (!isRepo) return { paths: null, note: '当前目录不是 git 仓库，按"改动集未知"处理。' };
+  const changed = new Set();
+  const add = (out) => {
+    for (const line of (out ?? '').split(/\r?\n/)) {
+      const p = line.trim();
+      if (p) changed.add(p.split('\\').join('/'));
+    }
+  };
+  add(gitOut(['diff', '--name-only', 'HEAD'])); // 工作树 + 暂存区
+  const upstream = gitOut(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}']);
+  if (upstream) {
+    const base = gitOut(['merge-base', 'HEAD', upstream.trim()]);
+    if (base) add(gitOut(['diff', '--name-only', `${base.trim()}..HEAD`])); // 已提交未推送
+  }
+  add(gitOut(['ls-files', '--others', '--exclude-standard'])); // untracked
+  return { paths: [...changed], note: null };
+}
+
+function selectTasks(tasks, changedPaths, args) {
+  if (args.only) {
+    const wanted = new Set(args.only);
+    return tasks.filter((t) => wanted.has(t.name));
+  }
+  if (args.full || changedPaths === null) return [...tasks];
+  return tasks.filter((t) => {
+    if ((t.prefixes?.length ?? 0) === 0) return true; // 空前缀 = 始终运行
+    return changedPaths.some((p) => t.prefixes.some((pre) => p === pre || p.startsWith(pre) || p.startsWith(pre.split('/').join('\\'))));
+  });
+}
+
+function main() {
+  const args = parseArgs(process.argv.slice(2));
+  if (args.help) {
+    console.log('用法：node scripts/verify-local.mjs [--full] [--dry-run] [--only <name1,name2>] [paths...]');
+    process.exit(0);
+  }
+
+  const { paths: changedPaths, note } = args.paths.length > 0
+    ? { paths: args.paths.map((p) => p.split('\\').join('/')), note: null }
+    : collectChangedPaths();
+  if (note) console.warn(`⚠ ${note}`);
+
+  const selected = selectTasks(TASKS, changedPaths, args);
+  console.log(`改动文件 ${changedPaths === null ? '未知' : changedPaths.length} 个，选中任务 ${selected.length} 个：`);
+  for (const t of selected) console.log(`  - ${t.name}`);
+  if (args.dryRun) {
+    console.log('（dry-run：不执行）');
+    process.exit(0);
+  }
+  if (selected.length === 0) {
+    console.log('无匹配任务，门禁直接通过。');
+    process.exit(0);
+  }
+
+  let failed = null;
+  for (const t of selected) {
+    console.log(`\n▶ ${t.name}\n$ ${t.cmd}`);
+    const r = spawnSync(t.cmd, {
+      shell: true,
+      stdio: 'inherit',
+      cwd: process.cwd(),
+    });
+    if (r.status !== 0) {
+      failed = t;
+      break;
+    }
+  }
+
+  if (failed) {
+    console.error(`\n✗ 本地门禁在任务「${failed.name}」失败，后续任务未执行（fail-fast）。`);
+    process.exit(1);
+  }
+  console.log(`\n✓ 本地门禁通过（${selected.length} 个任务）。`);
+}
+
+main();

@@ -1,0 +1,11 @@
+{
+  "rootFiles": [
+    "check-contracts.mjs",
+    "check-doc-links.mjs",
+    "check-file-size-governance.mjs",
+    "check-scripts-baseline.mjs",
+    "README.md",
+    "verify-local.mjs"
+  ],
+  "topDirs": []
+}

@@ -1,0 +1,15 @@
+{
+  "name": "lime-star",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Governance commands for lime-star. Product code is Python; this file declares no dependencies.",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "verify:local": "node scripts/verify-local.mjs",
+    "test:contracts": "node scripts/check-contracts.mjs",
+    "governance:file-size": "node scripts/check-file-size-governance.mjs",
+    "governance:scripts": "node scripts/check-scripts-baseline.mjs"
+  }
+}
