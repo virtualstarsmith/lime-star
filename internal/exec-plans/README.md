@@ -22,7 +22,6 @@
 
 | 计划 | 状态 | 主目标 |
 | --- | --- | --- |
-| `paradigm-port-plan.md` | 待验收 | 把 Lime 的开发范式搬入 lime-star |
 
 计划收尾后，从本表删除对应行。路线图不列入本表，见 `../roadmap/README.md`。
 

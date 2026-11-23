@@ -1,6 +1,6 @@
 # 范式搬运计划
 
-状态: in_progress（待仓库所有者验收）
+状态: done
 日期: 2026-11-23
 主目标: 把 Lime 的开发范式六层搬入 lime-star，使新 Agent 只读仓库文件就能知道规则在哪、改哪个目录、跑什么命令、什么算完成。
 
@@ -68,9 +68,9 @@ lime-star 是用 Lime 的开发范式练习开发 Agent 的项目。本计划先
 | P1 | node scripts/check-file-size-governance.mjs --update | 门禁 | 通过：扫描 39 个文件、0 个超线 |
 | P1 | node scripts/verify-local.mjs --full | 门禁 | 通过：4 个任务，退出码 0 |
 | P1 | npm run verify:local -- --full | 门禁 | 通过：与 node 形式等价，退出码 0 |
-| P1 | CI quality.yml | CI | 未跑：需要 push，仓库所有者尚未要求 |
+| P1 | CI quality.yml | CI | 通过：push 23171af 后的 run 45172278363，verify 作业成功，步骤 Local gate (full) 成功；环境 ubuntu-latest 加 Node 22 |
 | P2 | lime 路径存在性核对 | 静态核对 | 通过：路线图引用的 lime 路径逐条存在 |
-| P3 | 冷启动测试 | 人工验收 | 第一轮已跑（2026-11-23）：四问均可从仓库文件答出，另发现文档与仓库不一致并已修复，见进度记录。第二轮（同日，新起子会话，只给四问）：路径、命令与事实全部与文件一致，两处表述偏差见进度记录；是否通过由仓库所有者判定 |
+| P3 | 冷启动测试 | 人工验收 | 第一轮已跑（2026-11-23）：四问均可从仓库文件答出，另发现文档与仓库不一致并已修复，见进度记录。第二轮（同日，新起子会话，只给四问）：路径、命令与事实全部与文件一致，两处表述偏差见进度记录。仓库所有者于 2026-11-23 确认通过 |
 | 收尾 | 全部退出条件复验：路线图七项、lime 路径存在性、目录地图与实际目录双向核对、AGENTS.md 路径、适配标记搜索、npm.cmd run verify:local -- --full | 门禁与静态核对 | 通过：8 个阶段七项齐全；11 条 lime 路径存在；12 个目录双向一致；适配标记 0 处；门禁 4 个任务通过，退出码 0 |
 
 ## 验证合同
@@ -83,7 +83,7 @@ Architecture impact: major
 
 架构图已更新：internal/aiprompts/architecture.md（新建，含目录地图、业务主链、依赖方向）
 
-Responsible developer confirmation: 仓库所有者，待验收时确认
+Responsible developer confirmation: 仓库所有者，2026-11-23
 
 确认内容：本次新增治理目录与规则文件，确定目标布局与唯一业务主链；产品代码目录尚未创建。回滚方式是还原本计划写集涉及的文件。2026-11-23 同一变更集内追加：按仓库所有者要求新增 internal/prd、internal/roadmap、internal/research 三个事实源层，路线图文件从 exec-plans 移入 roadmap，"需求"加入裁决顺序第 5 级；这三项的回滚是把路线图文件移回 exec-plans 并删除三个目录。同日按仓库所有者意见，根 AGENTS.md 的事实源分层与导航、根 README.md 的入口说明一并更新，属于同一确认范围。
 
@@ -155,10 +155,25 @@ Responsible developer confirmation: 仓库所有者，待验收时确认
 - 完成度：95%
 - 下一刀：仓库所有者判定 P3，确认架构确认块与需求草稿；说"提交"；要求 push。首次 push 后由 Agent 回写 CI 结果，把完成度写到 100%，然后进入路线图 P0。
 
+### 2026-11-23（提交、push 与 CI）
+
+- 改动：仓库所有者说"提交"后提交本变更集：23171af（main），43 个文件，新增 2983 行、删除 1 行，提交说明为"落地 Lime 开发范式并建立 Agent 实践路线图"。仓库所有者同意 push 后推送到 origin/main，远端 main 指向 23171af。push 前预检：86 个带目录的路径引用，大小写与真实文件一致，因为 CI 在 Linux 上区分大小写；仓库内 44 个文件均为 LF，本机 core.autocrlf 为 true，没有加 .gitattributes。
+- 验证：CI 工作流 quality 在 GitHub 上运行成功，run 45172278363，对应提交 23171af；verify 作业的 Local gate (full) 步骤成功，即 node scripts/verify-local.mjs --full 在 ubuntu-latest 加 Node 22 上通过。这是门禁第一次在 Linux 与 Node 22 上通过。证据等级：CI，来源是 GitHub Actions 的运行记录与作业明细。
+- 未确认：架构确认块、需求草稿 agent-practice.md 与 P3 仍待仓库所有者确认。按规则，未确认的重大架构变更不标记 done，所以状态保持 in_progress。
+- 完成度：100%。Agent 侧的工作与全部机器验证（本地门禁、CI）均已完成；标记 done 还差上面三项确认。
+- 下一刀：仓库所有者确认架构确认块、需求草稿与 P3；说"提交"后提交本记录，并在被要求时 push；然后进入路线图 P0。
+
+### 2026-11-23（确认与收尾）
+
+- 改动：仓库所有者回复"确认，提交并 push"，确认了三项：架构确认块、需求草稿 agent-practice.md、P3 冷启动验收。架构确认块填入确认人与日期；需求文档状态改为已确认，prd/README.md 的清单和路线图文件里的"需求"一行同步；P3 的矩阵行记为确认通过。计划状态改为 done，并从 exec-plans/README.md 的当前计划表移除。计划文件保留，因为技术债表、研究文档和路线图都引用它的进度记录。
+- 验证：npm.cmd run verify:local -- --full 的 4 个任务通过，退出码 0。证据等级：门禁。
+- 完成度：100%
+- 下一刀：进入路线图 P0，开工话术见路线图。
+
 ## 当前结论
 
 - 治理四分类：current 为下列全部文件：根目录的 AGENTS.md、README.md、package.json、.gitignore 和 CI 工作流；internal/aiprompts 下 4 份规则加索引；internal/develop 下 3 份方法论与学习材料；internal/exec-plans 下 README、2 个模板、技术债表和本计划；internal/prd、internal/roadmap、internal/research 各一份 README 加一份文档；internal/tech/harness 与 internal/test 的目标骨架；scripts 下 5 个脚本加 README；governance 下 4 个基线；.codex/skills 下索引与 5 个 skill。compat、deprecated、dead 均无新增或删除。
-- 验证结果与未验证原因：见验证矩阵。未验证的是 CI，需要仓库所有者要求 push。冷启动测试已执行两轮，第二轮在新起的子会话里完成，结果见进度记录；是否通过由仓库所有者判定。
+- 验证结果与未验证原因：见验证矩阵，本地门禁与 CI 均已通过，没有未验证项。架构确认块、需求草稿与 P3 已由仓库所有者于 2026-11-23 确认。
 - 来源声明：kit 模板文件原样取用，其中 verify-local.mjs 只改了任务表，check-doc-links.mjs 另改了解析规则（见进度记录），其余脚本和两份学习材料只替换了适配标记与路径前缀（paradigm-quick-checklist.md 另在冷启动修复中改了三行，见进度记录）。kit 没有的部分按 lime-star 语境改写，参考的 lime 路径如下，未复制其原文：AGENTS.md 的提交规则与收尾格式；internal/aiprompts 下的 architecture、governance、quality-workflow、parallel-agent-collaboration；internal/develop/traceable-agent-acceptance-methodology.md；internal/tech/harness/README.md；internal/aiprompts/harness-engine-governance.md；internal/test/harness-evals.md；.codex/skills 下的 lime-governance、lime-quality-workflow、lime-product-e2e-loop、project-skill-factory、lime-release-workflow。internal/research/lime-paradigm.md 另引用了 lime 的以下路径，同样只读未复制：AGENTS.md；internal/README.md；internal/aiprompts 下的 architecture.md、governance.md、quality-workflow.md、README.md、parallel-agent-collaboration.md、project-heatmap.md、harness-engine-governance.md；internal/exec-plans/README.md 与 tech-debt-tracker.md；internal 各一级目录的文件清单；package.json 的 scripts；scripts 的文件清单；.github/workflows 下的 quality.yml 与 harness-nightly.yml；.husky/pre-commit；.codex/skills/README.md。
 
-完成度: 95%
+完成度: 100%
