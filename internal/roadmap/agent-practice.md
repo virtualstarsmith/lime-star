@@ -12,7 +12,7 @@
 ## 当前事实
 
 - 仓库已建立规则、事实源、计划、验证四层，以及验收方法论和 harness 反馈层的目标骨架，见 `../exec-plans/paradigm-port-plan.md`。
-- P0 已于 2026-11-24 交付工程骨架和空命令；回合、模型、工具、持久化尚未开始。目标布局见 internal/aiprompts/architecture.md。
+- P0 已于 2026-11-24 交付工程骨架和空命令；P1 已于 2026-11-24 交付多轮对话、请求日志和凭证守卫。回合循环、工具、持久化尚未开始。目标布局见 internal/aiprompts/architecture.md。
 - 代码由 Agent 编写，仓库所有者验收；提交按根 AGENTS.md 的提交规则执行。
 - 技术栈：Python 3.11 及以上（uv）；OpenAI 兼容模型接口；治理门禁是零依赖的 Node 脚本。
 - 需求已于 2026-11-23 重写为行为规格：一个全局文件加五个能力文件，R1 到 R14，见 `../exec-plans/prd-alignment-plan.md`；仓库所有者于 2026-11-24 确认，原有的三个未决问题按推荐答案落成决策。各阶段的"交付需求"引用它的编号，不再复述需求。
@@ -399,7 +399,7 @@ MVP 之后的扩展候选：多模型路由、TUI、子 Agent、首个 release�
 | 阶段 | 命令 | 证据等级 | 结果 |
 | --- | --- | --- | --- |
 | P0 | `uv run lime-star --version`；`npm run verify:local -- --full` | Gate B | 通过（2026-11-24）：本地 8 个任务通过，CI 跑通一次 |
-| P1 | `lime-star` 真实对话；密钥守卫脚本 | Live + Gate B | 未跑 |
+| P1 | `lime-star` 真实对话；密钥守卫脚本 | Live + Gate B | 通过（2026-11-24）：真实模型连续三轮，第三轮答出第一轮说的名字；请求日志三条 ok，没有内容和密钥；密钥守卫通过 |
 | P2 | `uv run pytest tests/unit -q` | Unit + 入口集成 | 未跑 |
 | P3 | `npm run test:contracts`；夹具驱动的集成测试 | Current fixture + Gate A | 未跑 |
 | P4 | `uv run python scripts/smoke/agent_gate_b.py` | Gate B | 未跑 |
@@ -425,6 +425,13 @@ MVP 之后的扩展候选：多模型路由、TUI、子 Agent、首个 release�
 - 完成度：P0 100%。路线图 14%，P0 完成，P1 到 P7 未开始。
 - 下一刀：按 P1 的开工话术开始 P1。技术债 CCD-001 的前提已具备，建议并入 P1 的计划。
 
+### 2026-11-24 P1 chat 完成
+
+- 改动：app 回合入口（start_turn、read_thread）与 model_provider（配置、客户端、系统指令、错误归类、请求日志）落地。`lime-star` 不带参数开始会话，每次请求带上系统指令和到此刻为止的全部历史；请求日志是 `.lime-star/logs/` 下的 JSON Lines，只记时间、标识、状态、耗时和 token 用量；回合出错或被 Ctrl+C 取消后会话可以继续。密钥守卫 `scripts/security/check-secrets.mjs` 接入 verify:local，任务表新增 secrets 与 test:guards。`.env.example`、根 AGENTS.md 的凭证硬规则、architecture.md 的三行状态同步。技术债 CCD-001 清退。写集、默认选择与验证细节见 `../exec-plans/p1-chat-plan.md`。
+- 验证：四条退出条件逐条满足。Live：用仓库所有者配置的真实模型（glm-5.2）连续对话三轮，第三轮答出第一轮说的名字（R2.1-S1）；用无效密钥请求真实接口一次，说明为鉴权失败。Gate B：真实进程里请求日志满足 R3.1 到 R3.3，终端输出和日志里搜不到密钥；Ctrl+C 另在真实控制台里用真实事件验证，取消约 0.02 秒生效。密钥守卫通过（R4.5、R4.6）。`npm run verify:local -- --full` 10 个任务通过，117 条通过，2 条 Live 用例默认跳过。推送后 CI 跑通一次，运行 45341894974，结论 success；依据是运行和各步骤的状态，日志需要登录，没有读。架构变更已由仓库所有者确认。
+- 完成度：P1 100%。路线图 29%，P0、P1 完成，P2 到 P7 未开始。
+- 下一刀：按 P2 的开工话术开始 P2。开工前先定一件事：P1 实测取消一个回合之后，模型会把被取消的那条消息一起回答；要不要把回合结局告诉模型，这决定 P2、P3 怎么设计模型可见的历史。技术债 CCD-002、CCD-003 在 P2 开工前补。
+
 ## 当前结论
 
-完成度: 14%（P0 已完成；P1 到 P7 未开始）
+完成度: 29%（P0、P1 已完成；P2 到 P7 未开始）

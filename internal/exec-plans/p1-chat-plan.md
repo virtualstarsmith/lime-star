@@ -1,6 +1,6 @@
 # p1-chat 计划
 
-状态: in_progress
+状态: done
 日期: 2026-11-24
 主目标: 接上 OpenAI 兼容模型，做出多轮对话命令，并让每次模型请求都留下可关联的记录。
 
@@ -248,10 +248,19 @@ Responsible developer confirmation: 仓库所有者，2026-11-24
 - 完成度：95%。还差 CI：仓库所有者同时要求 push，推送之后核对。
 - 下一刀：推送，核对 CI；通过后在路线图的进度记录里追加 P1 的阶段结论，把本计划标为 done。
 
+### 2026-11-24（推送、CI 与收尾）
+
+- 改动：仓库所有者要求 push。推送到 origin/main，快进 c2845c1..579eb2b，共两个提交：65fb7bf 是 P1 的实现，579eb2b 是架构确认。
+- 验证：CI 首次运行即通过：运行 45341894974，结论 success，ubuntu-latest，从创建到结束约 50 秒。作业 verify 的各步骤都成功，其中包括在 Linux 上跑的全量门禁。依据是运行和步骤的状态，日志接口返回 403，没有读。所以 Linux 上实际跑了多少条、跳过多少条没有直接看到；按设计，控制台用例和 Live 用例在 Linux 上跳过。
+- 改动：路线图追加 P1 的阶段结论，验证矩阵的 P1 行改为通过，当前事实与完成度同步。本计划状态改为 done，并从 `README.md` 的当前计划表移除。计划文件保留，因为路线图的进度记录引用它。本条所在的提交在写入时还没有推送，等仓库所有者要求。
+- 未验证：Windows 以外的平台只有 CI 这一次运行作为证据；Python 3.11 到 3.13 仍然没有跑过。
+- 完成度：100%。路线图 P1 的四条退出条件全部满足，架构变更已确认，CI 通过。
+- 下一刀：按路线图 P2 的开工话术开始 P2。开工前先定"取消之后的回合要不要把结局告诉模型"；CCD-002、CCD-003 在 P2 开工前补。
+
 ## 当前结论
 
 - 治理四分类：current 新增 app 回合入口（open_session，Session 的 start_turn 与 read_thread）；model_provider（配置、客户端、系统指令、错误归类、请求日志、Provider）；CLI 的会话交互 chat；密钥守卫 scripts/security/check-secrets.mjs；verify-local 的 secrets 与 test:guards 两个任务；守卫脚本的回归用例。compat、deprecated、dead 均无新增或删除。删掉的只有 cli/main.py 里"不带参数报用法错误"的过渡行为，它没有需求编号，不属于四类中的任何一类。
-- 验证结果与未验证原因：见验证矩阵与进度记录。路线图 P1 的四条退出条件都已满足：逐条验证、Live（真实模型连续三轮）、Gate B、密钥守卫。剩余的未验证项不阻塞这四条，见进度记录。
+- 验证结果与未验证原因：见验证矩阵与进度记录。路线图 P1 的四条退出条件都已满足：逐条验证、Live（真实模型连续三轮）、Gate B、密钥守卫。架构变更已由仓库所有者确认，推送后 CI 通过。剩余的未验证项不阻塞这四条，见进度记录。
 - 来源声明：对照阅读了 lime 仓库 internal/aiprompts/prompt-foundation.md，以及 lime-rs/crates/model-provider 目录（lib.rs、http.rs、Cargo.toml 和目录结构）。只取两个做法：基础指令只有一个组装者；请求传输、错误归类、历史各占一个模块。按本仓库语境使用，没有复制原文。另读了 CPython 3.14 分支的 Modules/_io/winconsoleio.c、Python/parking_lot.c、Modules/signalmodule.c，用来确认 Windows 上 Ctrl+C 唤醒主线程和控制台读取的机制。
 
-完成度: 95%
+完成度: 100%
