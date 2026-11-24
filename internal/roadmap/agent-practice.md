@@ -1,7 +1,7 @@
 # Agent 实践路线图
 
 状态: in_progress
-日期: 2026-11-23
+日期: 2026-11-24
 主目标: 做出一个能带项目目录读写文件、执行命令、危险操作经审批、会话可恢复的最小 Agent，并全程按本仓库的范式交付。
 需求: `../prd/agent-practice.md`（已确认，仓库所有者，2026-11-24）
 
@@ -12,7 +12,7 @@
 ## 当前事实
 
 - 仓库已建立规则、事实源、计划、验证四层，以及验收方法论和 harness 反馈层的目标骨架，见 `../exec-plans/paradigm-port-plan.md`。
-- 产品代码尚未开始；目标布局见 internal/aiprompts/architecture.md。
+- P0 已于 2026-11-24 交付工程骨架和空命令；回合、模型、工具、持久化尚未开始。目标布局见 internal/aiprompts/architecture.md。
 - 代码由 Agent 编写，仓库所有者验收；提交按根 AGENTS.md 的提交规则执行。
 - 技术栈：Python 3.11 及以上（uv）；OpenAI 兼容模型接口；治理门禁是零依赖的 Node 脚本。
 - 需求已于 2026-11-23 重写为行为规格：一个全局文件加五个能力文件，R1 到 R14，见 `../exec-plans/prd-alignment-plan.md`；仓库所有者于 2026-11-24 确认，原有的三个未决问题按推荐答案落成决策。各阶段的"交付需求"引用它的编号，不再复述需求。
@@ -398,7 +398,7 @@ MVP 之后的扩展候选：多模型路由、TUI、子 Agent、首个 release�
 
 | 阶段 | 命令 | 证据等级 | 结果 |
 | --- | --- | --- | --- |
-| P0 | `uv run lime-star --version`；`npm run verify:local -- --full` | Gate B | 未跑 |
+| P0 | `uv run lime-star --version`；`npm run verify:local -- --full` | Gate B | 通过（2026-11-24）：本地 8 个任务通过，CI 跑通一次 |
 | P1 | `lime-star` 真实对话；密钥守卫脚本 | Live + Gate B | 未跑 |
 | P2 | `uv run pytest tests/unit -q` | Unit + 入口集成 | 未跑 |
 | P3 | `npm run test:contracts`；夹具驱动的集成测试 | Current fixture + Gate A | 未跑 |
@@ -418,6 +418,13 @@ MVP 之后的扩展候选：多模型路由、TUI、子 Agent、首个 release�
 
 每完成一个阶段，在这里按日期追加一条：阶段、改动、验证、完成度、下一刀。
 
+### 2026-11-24 P0 bootstrap 完成
+
+- 改动：uv 项目骨架（src 布局、包名 lime_star、入口命令 lime-star），`--version`、`--help` 与未知参数的处理，15 条测试。verify:local 接入 lock、lint、typecheck、test:unit，lock 排在其余 Python 任务之前。CI 加入 uv 的安装与依赖同步。行数守卫跳过 Python 工具的缓存目录。写集、默认选择与验证细节见 `../exec-plans/p0-bootstrap-plan.md`。
+- 验证：Gate B 通过。`uv run lime-star --version` 在仓库根与空目录各执行一次，只输出一行版本号，退出码 0；`--help` 退出码 0；`--nosuch` 退出码 2，标准输出为空。`npm run verify:local -- --full` 8 个任务通过。lint 与 lock 的失败探针都被报出。推送后 CI 跑通一次，运行 45302669187，结论 success；依据是运行的分步状态和它留下的 setup-uv 缓存，日志需要登录，没有读。
+- 完成度：P0 100%。路线图 14%，P0 完成，P1 到 P7 未开始。
+- 下一刀：按 P1 的开工话术开始 P1。技术债 CCD-001 的前提已具备，建议并入 P1 的计划。
+
 ## 当前结论
 
-完成度: 0%（P0 到 P7 均未开始）
+完成度: 14%（P0 已完成；P1 到 P7 未开始）

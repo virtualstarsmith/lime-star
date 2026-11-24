@@ -1,6 +1,6 @@
 # p0-bootstrap 计划
 
-状态: in_progress
+状态: done
 日期: 2026-11-24
 主目标: 建立 Python 工程骨架和 lime-star 空命令，让本地门禁从第一天起就覆盖 Python 代码。
 
@@ -83,7 +83,7 @@ verify-local.mjs 任务表里两行注释掉的占位任务，由真实的 uv �
 | B | lock 的失败探针：让锁文件过期 | 门禁（负向） | 通过：lock 以 1 退出；`--only test:unit,lock` 时 lock 先失败，test:unit 没有执行。探针前后 pyproject.toml 与 main.py 的 SHA256 一致，uv.lock 没有被改写 |
 | B | 行数守卫遇到读不了的 `.pytest_cache` | 门禁（先失败，修复后通过） | 修复前：扫到该目录报 EPERM，门禁以 2 退出。修复后保留该目录重跑：扫描 63 个文件，通过 |
 | B | `npm.cmd run verify:local -- --full` | 门禁 | 通过：8 个任务，退出码 0，用时 23.7 秒。本机执行策略是 Restricted，`npm` 会被拦，所以用 npm.cmd |
-| B | CI 工作流跑通一次 | CI | 未跑：需要先提交并推送，Agent 不主动执行。风险是工作流从未执行过；触发条件是仓库所有者推送后查看 Actions |
+| B | CI 工作流跑通一次 | CI | 通过：推送后运行 45302669187 结论 success，ubuntu-latest，用 Python 3.14.4。日志未登录读不到，接口返回 403；依据是分步状态和这次运行留下的 26.5 MB 的 setup-uv 缓存 |
 | 全程 | `npm run test:contracts` | 契约检查 | 未跑：本轮没有改协议、契约或 schema，没有风险 |
 
 ## 验证合同
@@ -124,10 +124,19 @@ verify-local.mjs 任务表里两行注释掉的占位任务，由真实的 uv �
 - 完成度：85%。
 - 下一刀：仓库所有者推送后核对 CI。通过后在路线图的进度记录里追加一条，把本计划标为 done，并从 `README.md` 的当前计划表移除。
 
+### 2026-11-24（CI 与收尾）
+
+- 改动：仓库所有者说"push"后推送到 origin/main，快进 4d9edae..507a713。CI 首次运行即通过：运行 45302669187，ubuntu-latest，结论 success。分步状态：setup-uv 2 秒、uv sync 1 秒、全量门禁 3 秒，都成功；setup-uv 的收尾步骤留下 26.5 MB 的缓存，键里是 ubuntu-26.04 与 3.14.4。日志需要登录才能读，接口返回 403，本机没有 gh，所以没有看到 CI 上 pytest 的输出；门禁是 fail-fast 的，8 个任务全过才会得到 success。
+- 改动：路线图追加 P0 的阶段结论，验证矩阵的 P0 行改为通过，当前事实与完成度同步。本计划状态改为 done，并从 `README.md` 的当前计划表移除。计划文件保留，因为路线图的进度记录引用它。
+- 验证：文档改动后重跑行数守卫与文档链接守卫，通过。
+- 未验证：非 Windows 平台上只有 CI 这一次运行作为证据，覆盖的是 ubuntu-latest；Python 3.11 到 3.13 仍然没有跑过。
+- 完成度：100%。路线图 P0 的四条退出条件全部满足。
+- 下一刀：按路线图 P1 的开工话术开始 P1。技术债 CCD-001 的前提已具备，建议并入 P1 的计划。
+
 ## 当前结论
 
 - 治理四分类：current 新增 lime-star 命令入口（Surface）、四个 Python 门禁任务、uv 项目骨架和测试。compat、deprecated、dead 均无新增或删除。删掉的只有 verify-local.mjs 里两行注释占位，不属于任何一类。
-- 验证结果与未验证原因：见验证矩阵和进度记录。
+- 验证结果与未验证原因：见验证矩阵和进度记录。路线图 P0 的四条退出条件全部满足，CI 在推送后跑通一次。
 - 来源声明：对照阅读了 lime 仓库根 AGENTS.md 的"协议与质量"，以及 lime 仓库 internal/aiprompts/quality-workflow.md 的"选择最低门禁"。只取两个做法：改动类型绑定可执行命令；改了门禁脚本就验证它的行为。按本仓库语境使用，没有复制原文。CI 用的版本号与输入项来自 setup-uv 仓库的 release 列表和 action.yml。
 
-完成度: 85%
+完成度: 100%
