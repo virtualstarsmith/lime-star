@@ -14,5 +14,13 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
+      # 钉精确版本：setup-uv 没有 v10 这类主版本标签（2026-11-24 用 git ls-remote 核对），升级时手动改这里。
+      # uv 钉在生成 uv.lock 的版本上；升级 uv 并重新 uv lock 之后，同步改这里。
+      - uses: astral-sh/setup-uv@v10.4.0
+        with:
+          version: "0.12.4"
+      # 按 uv.lock 和 .python-version 建好环境，Python 解释器由 uv 自行下载。
+      - name: Python 依赖（uv sync）
+        run: uv sync
       - name: Local gate (full)
         run: node scripts/verify-local.mjs --full

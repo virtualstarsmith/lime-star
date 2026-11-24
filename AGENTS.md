@@ -63,6 +63,9 @@ lime-star 是用 Lime 的开发范式练习开发 Agent 的个人项目。Agent 
 ```bash
 npm run verify:local
 npm run test:contracts
+uv run pytest
+uv run ruff check
+uv run mypy
 ```
 
-Python 项目的命令（`uv run pytest` 等）随路线图 P0 加入。
+Python 任务的命令自路线图 P0 起由 verify:local 按改动路径触发；首次运行前先执行 `uv sync`。

@@ -22,6 +22,7 @@
 
 | 计划 | 状态 | 主目标 |
 | --- | --- | --- |
+| [p0-bootstrap-plan.md](p0-bootstrap-plan.md) | 进行中 | 工程骨架与空命令：uv 项目、lime-star 命令、四个 Python 门禁任务 |
 
 计划收尾后，从本表删除对应行。路线图不列入本表，见 `../roadmap/README.md`。
 

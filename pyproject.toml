@@ -1,0 +1,51 @@
+# 依赖与工具链的唯一声明处。锁文件 uv.lock 由 uv 维护，不手改。
+# Python 任务（lock、lint、typecheck、test:unit）由 scripts/verify-local.mjs 按改动路径触发。
+
+[project]
+name = "lime-star"
+# 版本号只有一个来源：src/lime_star/__init__.py 的 __version__。
+dynamic = ["version"]
+description = "最小的命令行 Agent：带着项目目录读写文件、执行命令、危险操作经审批、会话可恢复"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+# 运行时不依赖第三方包。模型接口的 SDK 随路线图 P1 加入。
+dependencies = []
+
+[project.scripts]
+lime-star = "lime_star.cli.main:main"
+
+[dependency-groups]
+dev = ["pytest", "ruff", "mypy"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/lime_star/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lime_star"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+files = ["src", "tests"]
+
+[[tool.mypy.overrides]]
+# 测试放宽：不强制写类型标注，其余严格项保留。
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_untyped_decorators = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

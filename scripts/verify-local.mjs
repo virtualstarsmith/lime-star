@@ -13,7 +13,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 
 // 任务表：prefixes 为空数组 = 任何时候都跑；
-// 否则是 POSIX 风格路径前缀（相对仓库根）。Python 任务由路线图 P0 接入。
+// 否则是 POSIX 风格路径前缀（相对仓库根）。Python 任务自路线图 P0 起接入。
 const TASKS = [
   {
     name: 'file-size-governance',
@@ -35,9 +35,29 @@ const TASKS = [
     prefixes: ['internal/', 'AGENTS.md', 'README.md', '.codex/'],
     cmd: 'node scripts/check-doc-links.mjs',
   },
-  // 路线图 P0 接入的 Python 任务（代码尚未创建，接入前保持注释）：
-  // { name: 'test:unit', prefixes: ['src/'], cmd: 'npm run test:unit -- --changed' },
-  // { name: 'typecheck', prefixes: ['src/', 'packages/'], cmd: 'npm run typecheck' },
+  // Python 任务（路线图 P0 接入），命令直接调用 uv，首次运行前需要 uv sync。
+  // lock 必须排在其余 Python 任务之前：uv run 遇到过期的锁文件会自动重写它，
+  // 排在后面就查不出"提交的锁文件已经过期"。
+  {
+    name: 'lock',
+    prefixes: ['pyproject.toml'],
+    cmd: 'uv lock --check',
+  },
+  {
+    name: 'lint',
+    prefixes: ['src/', 'tests/'],
+    cmd: 'uv run ruff check . && uv run ruff format --check .',
+  },
+  {
+    name: 'typecheck',
+    prefixes: ['src/', 'tests/'],
+    cmd: 'uv run mypy',
+  },
+  {
+    name: 'test:unit',
+    prefixes: ['src/', 'tests/', 'pyproject.toml', 'uv.lock'],
+    cmd: 'uv run pytest -q',
+  },
 ];
 
 function parseArgs(argv) {
