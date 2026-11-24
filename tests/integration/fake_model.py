@@ -7,6 +7,7 @@
 import json
 import threading
 import time
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -39,6 +40,8 @@ class SeenRequest:
     model: Any
     messages: list[dict[str, Any]]
     authorization: str | None
+    tools: Any
+    keys: list[str]
 
 
 @dataclass(frozen=True)
@@ -70,6 +73,44 @@ def completion(text: str, *, input_tokens: int = 12, output_tokens: int = 34) ->
             "total_tokens": input_tokens + output_tokens,
         },
     }
+
+
+def calling(
+    calls: Sequence[tuple[str, Mapping[str, Any] | str]], *, text: str | None = None
+) -> dict[str, Any]:
+    """一条手写的 Chat Completions 响应：模型按顺序请求几次函数调用，可以附带一段文本。
+
+    参数写成字典时转成 JSON 文本；写成字符串时原样发出，用来模拟不合法的参数。
+    """
+    return {
+        "id": "chatcmpl-fake",
+        "object": "chat.completion",
+        "created": 1700000000,
+        "model": FAKE_MODEL,
+        "choices": [
+            {
+                "index": 0,
+                "message": {
+                    "role": "assistant",
+                    "content": text,
+                    "tool_calls": [
+                        {
+                            "id": f"call{index}",
+                            "type": "function",
+                            "function": {"name": name, "arguments": _as_json(arguments)},
+                        }
+                        for index, (name, arguments) in enumerate(calls, start=1)
+                    ],
+                },
+                "finish_reason": "tool_calls",
+            }
+        ],
+        "usage": {"prompt_tokens": 12, "completion_tokens": 34, "total_tokens": 46},
+    }
+
+
+def _as_json(arguments: Mapping[str, Any] | str) -> str:
+    return arguments if isinstance(arguments, str) else json.dumps(arguments)
 
 
 def error_body(message: str, *, code: str = "invalid_request_error") -> dict[str, Any]:
@@ -112,6 +153,16 @@ class FakeModel:
         with self._changed:
             self._steps.append(Step(200, completion(text), hold))
 
+    def call(
+        self,
+        *calls: tuple[str, Mapping[str, Any] | str],
+        text: str | None = None,
+        hold: Hold | None = None,
+    ) -> None:
+        """脚本化一条带工具调用的成功响应。"""
+        with self._changed:
+            self._steps.append(Step(200, calling(calls, text=text), hold))
+
     def fail(
         self,
         status: int,
@@ -119,7 +170,7 @@ class FakeModel:
         *,
         hold: Hold | None = None,
     ) -> None:
-        """脚本化一条错误响应。"""
+        """脚本化一条响应：默认是错误响应；给出 status 和 body 时按给出的发。"""
         with self._changed:
             self._steps.append(Step(status, body or error_body("fake failure"), hold))
 
@@ -167,6 +218,8 @@ class FakeModel:
             model=payload.get("model"),
             messages=payload.get("messages", []),
             authorization=handler.headers.get("Authorization"),
+            tools=payload.get("tools"),
+            keys=sorted(payload),
         )
         with self._changed:
             self._seen.append(seen)

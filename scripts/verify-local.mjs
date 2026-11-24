@@ -70,6 +70,13 @@ const TASKS = [
     prefixes: ['scripts/', 'tests/integration/test_guard_'],
     cmd: 'uv run pytest tests/integration -q -k test_guard_',
   },
+  // 架构守卫（路线图 P2 接入，技术债 CCD-002、CCD-003）：依赖方向与 Owner 章节的确认块。
+  // 它检查仓库自身，不启动进程；产品代码、架构图或守卫本身变动时才需要重跑。
+  {
+    name: 'architecture',
+    prefixes: ['src/lime_star/', 'internal/aiprompts/architecture.md', 'tests/integration/test_guard_architecture.py'],
+    cmd: 'uv run pytest tests/integration/test_guard_architecture.py -q',
+  },
 ];
 
 function parseArgs(argv) {

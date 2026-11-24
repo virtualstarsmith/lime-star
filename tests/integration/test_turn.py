@@ -2,6 +2,7 @@
 
 证据等级：入口集成。模型是本地替身服务，不是真实模型，也没有从真实运行录制。
 覆盖 R2.1、R2.2、R3.1 到 R3.3、R12.4、R12.5-S2、R12.6-S1，以及决策 D-09、D-11、D-29。
+回合循环经模型调用工具的接线在 test_loop.py 里。
 """
 
 import json
@@ -13,7 +14,8 @@ from typing import Any
 import pytest
 
 from lime_star.app import ConfigError, Outcome, Session, SessionError, open_session
-from lime_star.model_provider import Message, ModelConfig, Provider, RequestLog
+from lime_star.protocol import ModelText, UserMessage
+from lime_star.tool_runtime import Registry
 from tests.integration.fake_model import (
     FAKE_KEY,
     FAKE_MODEL,
@@ -22,7 +24,15 @@ from tests.integration.fake_model import (
     SeenRequest,
     error_body,
 )
-from tests.integration.support import client_for, read_log, wait_for_log
+from tests.integration.support import read_log, wait_for_log
+
+
+def write(base: Path, relative: str, data: str) -> None:
+    """在工作目录里放一个文本文件。"""
+    path = base / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(data, encoding="utf-8")
+
 
 FIXED_TIME = datetime(2026, 11, 24, 1, 2, 3, 400000, tzinfo=UTC)
 RECORD_KEYS = [
@@ -155,28 +165,30 @@ def test_request_log_has_one_record_per_request(
 
 
 def test_three_requests_under_one_turn_get_distinct_request_ids(
-    tmp_path: Path, fake_model: FakeModel
+    make_session: Any,
+    fake_model: FakeModel,
+    file_tools: Registry,
+    log_path: Path,
+    tmp_path: Path,
 ) -> None:
-    """R3.1-S1：同一回合里的三次请求得到三条记录，request_id 互不相同。
+    """R3.1-S1：一个回合里的三次模型请求得到三条记录，request_id 互不相同。
 
-    P1 的一个回合只发一次请求，循环在路线图 P2；这里在模型边界上验证记录的粒度。
+    回合里模型先两次调用 read_file，第三次才给出最终回复，请求由真实的循环发出。
     """
-    for index in range(3):
-        fake_model.reply(f"答{index}")
-    log = RequestLog.at(tmp_path)
-    provider = Provider(
-        client=client_for(fake_model),
-        config=ModelConfig(fake_model.url, FAKE_KEY, FAKE_MODEL),
-        log=log,
-        session_id="session-1",
-        thread_id="thread-1",
-    )
-    for _ in range(3):
-        provider.complete((Message(role="user", content="问"),), "turn-1")
-    records = read_log(log.path)
-    assert [record["turn_id"] for record in records] == ["turn-1"] * 3
+    write(tmp_path, "a.txt", "甲\n")
+    write(tmp_path, "b.txt", "乙\n")
+    fake_model.call(("read_file", {"path": "a.txt"}))
+    fake_model.call(("read_file", {"path": "b.txt"}))
+    fake_model.reply("读完了")
+    ids = counted()
+    session = make_session(tools=file_tools, now=lambda: FIXED_TIME, new_id=lambda: next(ids))
+    result = session.start_turn("把两个文件都读一下")
+    assert (result.outcome, result.reply) == (Outcome.DONE, "读完了")
+    records = read_log(log_path)
+    assert [record["turn_id"] for record in records] == [result.turn_id] * 3
     assert len({record["request_id"] for record in records}) == 3
     assert [record["status"] for record in records] == ["ok"] * 3
+    assert [record["usage"] for record in records] == [{"input": 12, "output": 34, "total": 46}] * 3
 
 
 def test_failed_request_is_logged_with_kind_and_status_only(
@@ -256,17 +268,18 @@ def test_cancel_stops_waiting_and_next_turn_keeps_history(
     assert contents(second)[1:] == ["第一问", "第二问"]
     record = session.read_thread()
     assert record.turns == (cancelled, done)
-    assert record.messages == (
-        Message(role="user", content="第一问"),
-        Message(role="user", content="第二问"),
-        Message(role="assistant", content="第二答"),
+    assert record.items == (
+        UserMessage(content="第一问"),
+        UserMessage(content="第二问"),
+        ModelText(content="第二答"),
     )
     hold.release()
     by_turn = {record["turn_id"]: record for record in wait_for_log(log_path, 2)}
     # 已经发出的请求照常留下记录；它晚到，所以不能假设它在日志里的先后。
     assert by_turn[cancelled.turn_id]["status"] == "ok"
     assert by_turn[done.turn_id]["status"] == "ok"
-    assert "迟到的回复" not in [message.content for message in session.read_thread().messages]
+    # 迟到的回复进了日志，没有进会话记录。
+    assert session.read_thread() == record
     assert first.messages[1]["content"] == "第一问"
 
 

@@ -5,6 +5,7 @@ P0 的用例覆盖 R1.1 到 R1.3。P1 的用例通过管道驱动一个真实的
 （本地替身服务，脚本化响应，没有从真实运行录制），不是真实模型。
 覆盖 R3.1、R3.2-S1、R4.1-S1、R4.2-S1、R4.3-S1、R4.3-S2、R13.1-S1、R13.2-S1、
 R13.3-S1、R13.4-S1、R13.5、R13.6-S1、R13.7-S1、R13.8-S1、R13.9-S1、R13.10、R13.13-S1。
+路线图 P2 加入 R12.3：达到步数上限时的终端说明。
 """
 
 import socket
@@ -316,3 +317,29 @@ def test_request_log_of_a_real_session_has_one_record_per_request(
     assert marker not in raw
     assert "第一答" not in raw
     assert FAKE_KEY not in raw
+
+
+def test_step_limit_is_reported_on_the_terminal(
+    start_cli: Callable[..., CliProcess],
+    model_env: dict[str, str],
+    fake_model: FakeModel,
+    log_path: Path,
+) -> None:
+    """R12.3：模型每次都调用工具，20 次请求后回合结束，终端说明已达到步数上限，随后回到输入提示。"""
+    for _ in range(20):
+        fake_model.call(("no_such_tool", {}))
+    process = start_cli(model_env)
+    process.wait_for("stdout", PROMPT)
+    process.send("一直调用工具")
+    process.wait_for(
+        "stdout",
+        "回合结束：已达到步数上限（一个回合最多 20 次模型请求）。\n",
+    )
+    process.wait_for("stdout", PROMPT, count=2)
+    process.send("/exit")
+    assert process.finish() == 0
+    assert process.output("stderr") == ""
+    records = read_log(log_path)
+    assert [record["status"] for record in records] == ["ok"] * 20
+    assert len({record["turn_id"] for record in records}) == 1
+    assert len({record["request_id"] for record in records}) == 20

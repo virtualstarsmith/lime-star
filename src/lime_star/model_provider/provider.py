@@ -1,6 +1,7 @@
-"""模型边界：带上系统指令和到此刻为止的全部历史发起一次请求，并留下一条请求记录。
+"""模型边界：带上系统指令、到此刻为止的全部项和可用的工具发起一次请求，并留下一条请求记录。
 
 覆盖需求 R2.1、R2.2、R3.1 到 R3.3、R12.4，以及 R12.5 里停止等待模型的部分。
+线路细节只在这里：项怎样转成接口消息、工具定义怎样交给接口、响应里的工具调用怎样取出来。
 """
 
 import threading
@@ -8,25 +9,42 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Literal
+from typing import assert_never
 from uuid import uuid4
 
-from openai import OpenAI
+from openai import Omit, OpenAI, omit
 from openai.types.chat import (
     ChatCompletion,
     ChatCompletionAssistantMessageParam,
+    ChatCompletionFunctionToolParam,
     ChatCompletionMessageParam,
+    ChatCompletionMessageToolCallParam,
     ChatCompletionSystemMessageParam,
+    ChatCompletionToolMessageParam,
     ChatCompletionUserMessageParam,
 )
+from openai.types.chat.chat_completion_message_function_tool_call_param import (
+    Function as CallFunction,
+)
+from openai.types.shared_params.function_definition import FunctionDefinition
 
 from lime_star.model_provider.config import ModelConfig
 from lime_star.model_provider.errors import ErrorKind, Failure, classify
 from lime_star.model_provider.prompt import SYSTEM_INSTRUCTION
 from lime_star.model_provider.request_log import RequestLog
-
-Role = Literal["user", "assistant"]
-"""一条消息是谁说的：用户，还是模型。"""
+from lime_star.protocol import (
+    Item,
+    Json,
+    ModelFailure,
+    ModelReply,
+    ModelResult,
+    ModelText,
+    Reasoning,
+    ToolCall,
+    ToolResult,
+    ToolSpec,
+    UserMessage,
+)
 
 Clock = Callable[[], datetime]
 NewId = Callable[[], str]
@@ -47,28 +65,13 @@ def new_id() -> str:
 
 
 @dataclass(frozen=True)
-class Message:
-    """一条对话消息：用户的，或者模型的。"""
-
-    role: Role
-    content: str
-
-
-@dataclass(frozen=True)
 class Reply:
-    """模型的一次完整回复。"""
+    """接口的一次完整响应里取出来的东西：文本、工具调用和 token 用量。"""
 
     text: str
+    calls: tuple[ToolCall, ...]
     input_tokens: int
     output_tokens: int
-
-
-class ModelError(Exception):
-    """这次模型请求失败。failure 只有类别、接口状态码和说明，没有错误正文。"""
-
-    def __init__(self, failure: Failure) -> None:
-        super().__init__(failure.describe())
-        self.failure = failure
 
 
 class Provider:
@@ -93,7 +96,12 @@ class Provider:
         self._now = now
         self._new_id = new_id
 
-    def complete(self, history: Sequence[Message], turn_id: str) -> Reply:
+    def respond(
+        self,
+        turn_id: str,
+        history: Sequence[Item],
+        tools: Sequence[ToolSpec],
+    ) -> ModelResult:
         """发起一次请求并等它结束。
 
         请求在工作线程里进行。等待期间按 Ctrl+C 会抛出 KeyboardInterrupt；
@@ -103,39 +111,39 @@ class Provider:
         request_id = self._new_id()
         started = time.perf_counter()
         done = threading.Event()
-        outcome: list[Reply | ModelError] = []
+        outcome: list[ModelResult] = []
 
         def run() -> None:
             try:
-                outcome.append(self._send(history, turn_id, request_id, started))
+                outcome.append(self._send(turn_id, history, tools, request_id, started))
             except Exception as exc:  # 未预料的异常也要让主线程拿到结局
-                outcome.append(ModelError(Failure(ErrorKind.INTERNAL, None, type(exc).__name__)))
+                failure = Failure(ErrorKind.INTERNAL, None, type(exc).__name__)
+                outcome.append(ModelFailure(failure.describe()))
             finally:
                 done.set()
 
         threading.Thread(target=run, name="model-request", daemon=True).start()
         while not done.wait(_WAIT_SLICE):
             pass
-        result = outcome[0]
-        if isinstance(result, ModelError):
-            raise result
-        return result
+        return outcome[0]
 
     def _send(
         self,
-        history: Sequence[Message],
         turn_id: str,
+        history: Sequence[Item],
+        tools: Sequence[ToolSpec],
         request_id: str,
         started: float,
-    ) -> Reply | ModelError:
+    ) -> ModelResult:
         reply: Reply | None = None
         failure: Failure | None = None
         try:
             completion = self._client.chat.completions.create(
                 model=self._config.model,
                 messages=_messages(history),
+                tools=_definitions(tools),
             )
-            reply = _text_of(completion)
+            reply = _reply_of(completion)
         except Exception as exc:
             failure = classify(exc)
         if reply is None and failure is None:
@@ -143,10 +151,10 @@ class Provider:
         try:
             self._log.append(self._record(turn_id, request_id, started, reply, failure))
         except OSError as exc:
-            return ModelError(Failure(ErrorKind.INTERNAL, None, type(exc).__name__))
+            failure = Failure(ErrorKind.INTERNAL, None, type(exc).__name__)
         if reply is None or failure is not None:
-            return ModelError(failure or Failure(ErrorKind.BAD_RESPONSE))
-        return reply
+            return ModelFailure((failure or Failure(ErrorKind.BAD_RESPONSE)).describe())
+        return ModelReply(text=reply.text, calls=reply.calls)
 
     def _record(
         self,
@@ -184,34 +192,98 @@ class Provider:
         return record
 
 
-def _messages(history: Sequence[Message]) -> list[ChatCompletionMessageParam]:
-    """系统指令只有这一处组装：同一会话的每次请求都带同一份（R2.2）。"""
+def _definitions(tools: Sequence[ToolSpec]) -> list[ChatCompletionFunctionToolParam] | Omit:
+    """把工具说明转成接口里的工具定义。没有工具时不出这个参数，请求与不提供工具时相同。"""
+    if not tools:
+        return omit
+    return [
+        ChatCompletionFunctionToolParam(
+            type="function",
+            function=FunctionDefinition(
+                name=tool.name,
+                description=tool.description,
+                parameters=_parameters(tool.parameters),
+            ),
+        )
+        for tool in tools
+    ]
+
+
+def _parameters(schema: dict[str, Json]) -> dict[str, object]:
+    """接口把参数模式当作一般的 JSON 对象；这里复制一份，类型也对得上。"""
+    return dict(schema)
+
+
+def _messages(history: Sequence[Item]) -> list[ChatCompletionMessageParam]:
+    """系统指令只有这一处组装：同一会话的每次请求都带同一份（R2.2）。
+
+    项按发生顺序转成接口消息。模型文本和紧跟它的工具调用同属一次响应，转成同一条 assistant 消息；
+    没有文本的工具调用单独成一条 assistant 消息。推理内容不上线路。
+    """
     messages: list[ChatCompletionMessageParam] = [
         ChatCompletionSystemMessageParam(role="system", content=SYSTEM_INSTRUCTION)
     ]
-    for message in history:
-        match message.role:
-            case "user":
-                param: ChatCompletionMessageParam = ChatCompletionUserMessageParam(
-                    role="user", content=message.content
+    speaking: ChatCompletionAssistantMessageParam | None = None
+    for item in history:
+        match item:
+            case UserMessage():
+                speaking = None
+                messages.append(ChatCompletionUserMessageParam(role="user", content=item.content))
+            case Reasoning():
+                pass
+            case ModelText():
+                speaking = ChatCompletionAssistantMessageParam(
+                    role="assistant", content=item.content
                 )
-            case "assistant":
-                param = ChatCompletionAssistantMessageParam(
-                    role="assistant", content=message.content
+                messages.append(speaking)
+            case ToolCall():
+                if speaking is None:
+                    speaking = ChatCompletionAssistantMessageParam(role="assistant", content=None)
+                    messages.append(speaking)
+                speaking["tool_calls"] = [*speaking.get("tool_calls", []), _call_param(item)]
+            case ToolResult():
+                speaking = None
+                messages.append(
+                    ChatCompletionToolMessageParam(
+                        role="tool", tool_call_id=item.call_id, content=item.content
+                    )
                 )
-        messages.append(param)
+            case _:
+                assert_never(item)
     return messages
 
 
-def _text_of(completion: ChatCompletion) -> Reply | None:
-    """取出回复文本和 token 用量。没有可用文本时返回 None。"""
+def _call_param(call: ToolCall) -> ChatCompletionMessageToolCallParam:
+    return ChatCompletionMessageToolCallParam(
+        id=call.call_id,
+        type="function",
+        function=CallFunction(name=call.name, arguments=call.arguments),
+    )
+
+
+def _reply_of(completion: ChatCompletion) -> Reply | None:
+    """取出回复文本、工具调用和 token 用量。既没有文本也没有工具调用时返回 None。"""
     choices = completion.choices
     if not choices:
         return None
-    content = choices[0].message.content
-    if not content:
+    message = choices[0].message
+    calls: list[ToolCall] = []
+    for index, call in enumerate(message.tool_calls or [], start=1):
+        if call.type == "function":
+            # 接口没有给调用编号时按序号补一个，后面的工具消息才有所指。
+            calls.append(
+                ToolCall(
+                    call_id=call.id or f"call{index}",
+                    name=call.function.name,
+                    arguments=call.function.arguments,
+                )
+            )
+    text = message.content or ""
+    if not text and not calls:
         return None
     usage = completion.usage
     input_tokens = usage.prompt_tokens if usage is not None else 0
     output_tokens = usage.completion_tokens if usage is not None else 0
-    return Reply(text=content, input_tokens=input_tokens, output_tokens=output_tokens)
+    return Reply(
+        text=text, calls=tuple(calls), input_tokens=input_tokens, output_tokens=output_tokens
+    )

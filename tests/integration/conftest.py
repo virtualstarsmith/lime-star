@@ -14,6 +14,7 @@ import pytest
 from lime_star.app import Session, open_session
 from lime_star.model_provider import API_KEY_VAR, BASE_URL_VAR, MODEL_VAR
 from lime_star.model_provider.request_log import LOG_DIR, REQUEST_LOG
+from lime_star.tool_runtime import Registry, read_file
 from tests.integration.fake_model import FAKE_KEY, FAKE_MODEL, FakeModel
 from tests.integration.support import CliProcess, child_env, client_for
 
@@ -54,6 +55,12 @@ def make_session(
         )
 
     return make
+
+
+@pytest.fixture
+def file_tools(tmp_path: Path) -> Registry:
+    """只注册了 read_file 的工具集，在工作目录里读文件。"""
+    return Registry([read_file(tmp_path)])
 
 
 @pytest.fixture

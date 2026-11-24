@@ -24,7 +24,7 @@ uv run lime-star
 
 ## 本地门禁
 
-需要 Node 18 或更高版本。治理脚本零依赖；Python 任务（lock、lint、typecheck、test:unit、test:guards）需要 uv，首次运行前先执行一次 `uv sync`。
+需要 Node 18 或更高版本。治理脚本零依赖；Python 任务（lock、lint、typecheck、test:unit、test:guards、architecture）需要 uv，首次运行前先执行一次 `uv sync`。
 
 ```bash
 uv sync                         # 首次运行前：按 uv.lock 建好 .venv

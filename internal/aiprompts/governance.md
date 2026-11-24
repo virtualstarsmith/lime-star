@@ -42,6 +42,8 @@
 | scripts 冻结基线 | `node scripts/check-scripts-baseline.mjs` |
 | 契约同步 | `node scripts/check-contracts.mjs` |
 | 文档交叉引用 | `node scripts/check-doc-links.mjs` |
+| 依赖方向与禁止旁路（architecture.md 第 4 节的依赖矩阵，模型客户端 SDK 只在 model_provider） | verify-local 的 architecture 任务：`tests/integration/test_guard_architecture.py` |
+| 重大架构变更的确认块（architecture.md 第 7 节的每个 Owner 章节） | verify-local 的 architecture 任务：`tests/integration/test_guard_architecture.py` |
 | 全部聚合 | `npm run verify:local` |
 | 旧路径回流 / dead 残留 | 尚无退役对象。首次退役时在 architecture.md 第 4 节登记，并在该阶段的计划里补负向守卫 |
 

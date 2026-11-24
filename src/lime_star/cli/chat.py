@@ -4,7 +4,7 @@ import queue
 import threading
 from enum import Enum, auto
 from pathlib import Path
-from typing import Protocol, TextIO
+from typing import Protocol, TextIO, assert_never
 
 from lime_star import __version__
 from lime_star.app import Outcome, Session, TurnResult
@@ -142,13 +142,19 @@ def chat(session: Session, lines: LineSource, out: TextIO, err: TextIO, workdir:
 
 
 def _show(result: TurnResult, out: TextIO, err: TextIO) -> None:
-    if result.outcome is Outcome.DONE:
-        _say(out, result.reply.rstrip("\n") + "\n")
-    elif result.outcome is Outcome.CANCELLED:
-        _say(out, "已取消。\n")
-    else:
-        # 错误写标准错误（R13.5-S2），只写类别和状态码。
-        _say(err, f"回合出错：{result.reason}。\n")
+    match result.outcome:
+        case Outcome.DONE:
+            _say(out, result.reply.rstrip("\n") + "\n")
+        case Outcome.CANCELLED:
+            _say(out, "已取消。\n")
+        case Outcome.STEP_LIMIT:
+            # 达到上限不是错误，说明写在标准输出（R12.3）。
+            _say(out, f"回合结束：{result.reason}。\n")
+        case Outcome.ERROR:
+            # 错误写标准错误（R13.5-S2），只写类别和状态码。
+            _say(err, f"回合出错：{result.reason}。\n")
+        case _:
+            assert_never(result.outcome)
 
 
 def _say(stream: TextIO, text: str) -> None:

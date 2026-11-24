@@ -25,9 +25,9 @@
 | `src/lime_star/cli/` | Surface | 终端入口、参数解析、终端投影、向用户发起审批 | 业务编排、provider 请求拼装、绕过 app 直接调用循环或工具 | 已有 |
 | `src/lime_star/app/` | 回合入口（唯一边界） | start_turn、read_thread、respond_action | 第二套执行链 | 已有 |
 | `src/lime_star/model_provider/` | 模型边界 | 模型配置、OpenAI 兼容请求、流式解析、请求日志 | 回合循环、工具权限、持久化 | 已有 |
-| `src/lime_star/protocol/` | 协议类型 | Thread、Turn、Item 的类型与事件形状 | 运行时逻辑、I/O | 路线图 P2 |
-| `src/lime_star/agent_runtime/` | 回合循环 | 循环状态机与回合编排 | provider wire 细节、工具执行、终端输出 | 路线图 P2 |
-| `src/lime_star/tool_runtime/` | 工具边界 | 工具注册、参数校验、路径边界、危险等级、执行 | 终端交互、provider 请求 | 路线图 P2 |
+| `src/lime_star/protocol/` | 协议类型 | Thread、Turn、Item 的类型与事件形状 | 运行时逻辑、I/O | 已有 |
+| `src/lime_star/agent_runtime/` | 回合循环 | 循环状态机与回合编排 | provider wire 细节、工具执行、终端输出 | 已有 |
+| `src/lime_star/tool_runtime/` | 工具边界 | 工具注册、参数校验、路径边界、危险等级、执行 | 终端交互、provider 请求 | 已有 |
 | `src/lime_star/thread_store/` | 持久化 | transcript 追加写入、读取与读模型 | 临时界面状态、第二份会话真相 | 路线图 P3 |
 | `protocol/` | 契约 schema | Thread、Turn、Item 的 JSON Schema | 实现代码 | 路线图 P3 |
 | `tests/` | 测试 | unit、integration、fixtures | 生产代码、真实凭证 | 已有 |
@@ -67,9 +67,23 @@ CLI 输入
 
 ## 4. 依赖方向与禁止边界
 
-- 依赖只能单向：cli -> app -> agent_runtime -> model_provider、tool_runtime、thread_store。
+- 依赖只能单向：cli -> app；app 是装配点，把循环、模型、工具、存储接在一起；agent_runtime、model_provider、tool_runtime、thread_store 各自只依赖 protocol。
 - protocol 被各层引用，自身不依赖任何层。
 - 禁止反向依赖与跨层旁路：cli 绕过 app；agent_runtime 依赖 cli；model_provider 依赖 tool_runtime；脚本或测试夹具之外的第二条执行链。
+- 方向落成下面这张表。守卫按它检查 `src/lime_star/` 下每个包的导入，这张表是唯一来源；新增包先在这里登记一行，再写代码。根包 `lime_star` 只有版本号，任何包都可以导入它。
+
+| 包 | 允许导入的本项目包 |
+| --- | --- |
+| `cli` | `app`、`protocol` |
+| `app` | `agent_runtime`、`model_provider`、`tool_runtime`、`thread_store`、`protocol` |
+| `agent_runtime` | `protocol` |
+| `model_provider` | `protocol` |
+| `tool_runtime` | `protocol` |
+| `thread_store` | `protocol` |
+| `protocol` | 无 |
+
+- 模型客户端 SDK（openai）只允许出现在 model_provider。第二条执行链没法用导入检查发现，靠评审和根 AGENTS.md 里"新的入口只能接入 app 回合入口"的规则。
+- 守卫是 `tests/integration/test_guard_architecture.py`：verify-local 的 architecture 任务在产品代码、本文件或守卫自身变动时执行它。
 - 已退役名单：暂无。首次退役时在此登记，格式为"<名称>为 dead / deleted / forbidden-to-restore"，精确到函数名、类型名或事件名。
 
 ## 5. 重大架构变更与开发者确认
@@ -101,4 +115,25 @@ Responsible developer confirmation: <姓名/代号>, <日期>
 
 每个跨层能力在本节之后各占一章，记录：主链、owner、边界、相关协议与退出条件。章节顺序编号；重大决策随章节落确认块。退役能力删除章节并在第 4 节登记负向守卫。
 
-暂无。路线图 P2 起逐阶段追加。
+### 7.1 回合循环
+
+落地于路线图 P2（2026-11-24）。阶段计划见 `../exec-plans/p2-loop-core-plan.md`。
+
+- 主链：app 回合入口 `start_turn` -> agent_runtime 的 `run_turn` -> model_provider 的一次模型请求、tool_runtime 的一次工具执行 -> 每一步的结果按发生顺序写回会话记录 -> CLI 投影。P2 的会话记录是 app 内存里的项，P3 起由 thread_store 持有。
+- owner：`src/lime_star/agent_runtime/` 是回合循环的唯一 current owner；`src/lime_star/protocol/` 是项、回合结局和三个边界接口的 owner；`src/lime_star/tool_runtime/` 是工具注册表的 owner。工具的完整边界（路径边界、危险等级、审批）随 P4 追加下一章。
+- 边界：
+  1. 循环只依赖 protocol，不导入模型客户端、工具实现或存储。守卫是 `tests/integration/test_guard_architecture.py` 里的依赖矩阵检查。
+  2. 循环通过三个接口与外界往来：模型（respond）、工具集（specs、execute）、会话记录（append）。接口是 protocol 里的结构化类型，由 app 在回合入口装配。
+  3. 一步一物化：一次模型响应先落成项（推理、文本、工具调用）并写进记录，再执行其中的工具调用；一次响应里的工具全部执行完、结果都写回之后，才发起下一次请求。
+  4. 一个回合最多 20 次模型请求（需求决策 D-10）。第 20 次响应仍调用工具时，一个工具也不执行，回合以步数上限结束。
+  5. 模型请求失败结束回合，不重试；工具出错、未知工具、参数不合法都作为工具结果交回模型，回合继续。
+  6. P2 的正式命令不向模型提供任何工具，注册表为空，请求与 P1 相同。read_file 只经 `open_session` 的 `tools` 参数注册，用在入口集成测试里。
+- 相关协议：项（UserMessage、ModelText、Reasoning、ToolCall、ToolResult）、Outcome（done、error、cancelled、step_limit）、ModelResult（ModelReply 或 ModelFailure）。项的 JSON Schema 契约随 P3 登记。
+- 退出条件：回合循环被另一个 owner 取代时，删除 `src/lime_star/agent_runtime/`，在第 4 节登记 `run_turn` 为 dead / deleted / forbidden-to-restore，并把依赖矩阵里的这一行删掉。
+
+```text
+Architecture impact: major
+架构图已更新：architecture.md 第 2 节目录地图（protocol、agent_runtime、tool_runtime 三行的状态列）、第 4 节的依赖矩阵、本节 7.1
+Responsible developer confirmation: 仓库所有者，2026-11-24
+确认内容：本阶段新增 protocol、agent_runtime、tool_runtime 三个 owner，回合入口第一次把回合交给循环，模型请求第一次能带上工具定义并取回工具调用。循环是只依赖 protocol 的纯核心，外界只经模型、工具集、会话记录三个接口进来。正式命令在这一阶段不向模型提供工具，可见行为与 P1 相同。替代方案：让循环直接依赖模型边界和注册表，被第 4 节的依赖方向禁止，守卫会拦；现在就把 read_file 挂到正式命令上，显示、会话记录和路径边界都还没有交付。回滚策略：删除三个新目录，Session.start_turn 回到只发一次请求，Provider 回到只取出回复文本；会话记录一直在内存里，磁盘上没有需要回滚的东西。
+```

@@ -35,6 +35,10 @@ lime-star 已于 2026-11-23 完成接入，记录见 `internal/exec-plans/paradi
 
 治理脚本自己也要有仓库内的回归。用例放在 `tests/integration/` 下，文件名以 `test_guard_` 开头：在临时目录里运行真实的脚本进程，断言退出码和输出。verify-local 的任务 test:guards 在 scripts/ 或这些用例变动时执行它们。
 
+## 架构守卫
+
+依赖方向和重大架构变更的确认块没有对应的治理脚本，直接写成 pytest 用例：`tests/integration/test_guard_architecture.py`。它检查仓库自身，不启动进程。verify-local 的 architecture 任务在产品代码（`src/lime_star/`）、架构图（`internal/aiprompts/architecture.md`）或这个文件变动时执行它。依赖矩阵从架构图第 4 节的表里读，架构图是唯一来源。
+
 ## 重新生成基线
 
 ```bash
