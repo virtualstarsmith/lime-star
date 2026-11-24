@@ -178,11 +178,11 @@ Evidence Layers:
 ```text
 Architecture impact: major
 架构图已更新：architecture.md 第 2 节目录地图（app、model_provider、.lime-star 三行的状态列）
-Responsible developer confirmation: 待仓库所有者确认
+Responsible developer confirmation: 仓库所有者，2026-11-24
 确认内容：本阶段落地 app 回合入口和 model_provider 两个 owner，第一次引入模型 HTTP transport 和请求日志持久化，CLI 输入由此第一次贯通到模型再回到终端。替代方案：让 CLI 直接调用模型 SDK，被 architecture.md 第 4 节禁止；现在就把会话历史落盘，那是 P3 的 thread_store，会提前出现第二份事实源。回滚策略：删除 app 与 model_provider 两个目录和模型 SDK 依赖，cli/main.py 回到不带参数报用法错误；请求日志在 .lime-star/ 下，不入库。
 ```
 
-判定为重大的依据是 architecture.md 第 5 节的"引入新的持久化或 transport"。P1 不追加 Owner 章节，路线图把它排在 P2 起。
+判定为重大的依据是 architecture.md 第 5 节的"引入新的持久化或 transport"。P1 不追加 Owner 章节，路线图把它排在 P2 起。仓库所有者于 2026-11-24 回复"架构确认"；署名沿用需求确认时的写法，见 `../prd/agent-practice.md` 开头的状态行。
 
 ## 进度记录
 
@@ -240,6 +240,13 @@ Responsible developer confirmation: 待仓库所有者确认
 - 本计划的状态保持 in_progress，原因有两个：架构确认块还等仓库所有者签字；CI 要等推送之后才能核对。
 - 完成度：95%，不变。
 - 下一刀：仓库所有者确认架构确认块；要求 push 之后核对 CI；通过后在路线图的进度记录里追加 P1 的阶段结论，把本计划标为 done，并从 `README.md` 的当前计划表移除。
+
+### 2026-11-24（架构确认）
+
+- 改动：仓库所有者回复"架构确认"。架构确认块已填写，署名用"仓库所有者"，与需求确认时的写法一致。
+- 验证：只改了文档。改完后文档链接守卫和行数守卫通过。
+- 完成度：95%。还差 CI：仓库所有者同时要求 push，推送之后核对。
+- 下一刀：推送，核对 CI；通过后在路线图的进度记录里追加 P1 的阶段结论，把本计划标为 done。
 
 ## 当前结论
 
