@@ -3,7 +3,7 @@
 状态: in_progress
 日期: 2026-11-23
 主目标: 做出一个能带项目目录读写文件、执行命令、危险操作经审批、会话可恢复的最小 Agent，并全程按本仓库的范式交付。
-需求: `../prd/agent-practice.md`（已确认）
+需求: `../prd/agent-practice.md`（已确认，仓库所有者，2026-11-24）
 
 ## 目标
 
@@ -15,6 +15,7 @@
 - 产品代码尚未开始；目标布局见 internal/aiprompts/architecture.md。
 - 代码由 Agent 编写，仓库所有者验收；提交按根 AGENTS.md 的提交规则执行。
 - 技术栈：Python 3.11 及以上（uv）；OpenAI 兼容模型接口；治理门禁是零依赖的 Node 脚本。
+- 需求已于 2026-11-23 重写为行为规格：一个全局文件加五个能力文件，R1 到 R14，见 `../exec-plans/prd-alignment-plan.md`；仓库所有者于 2026-11-24 确认，原有的三个未决问题按推荐答案落成决策。各阶段的"交付需求"引用它的编号，不再复述需求。
 
 ## 写集与避让
 
@@ -43,6 +44,7 @@
 - lime 对照阅读的路径都在 lime 仓库里，只读不改。借鉴的设计按本仓库语境重写，并在阶段计划的来源声明里列出路径。
 - 新增 scripts 一级目录（security、smoke、harness）时，在该阶段计划里写明理由，再运行 `node scripts/check-scripts-baseline.mjs --update` 更新冻结基线。
 - 用回放夹具取得的 Gate B 证据，必须标注"模型为回放夹具"。
+- 每个阶段先读需求的全局文件，再读该阶段"需求文件"列出的能力文件。开工前执行 `rg "^未决 OQ-" internal/prd`：本阶段有未决项时先请仓库所有者答复，不按推荐答案实现。
 
 ### 钉死的技术选择
 
@@ -73,8 +75,10 @@
 
 ### 退出条件
 
-1. 在干净克隆上 `uv sync` 成功并生成 uv.lock。
-2. `uv run lime-star --version` 在真实进程里输出版本号。
+交付需求：R1.1、R1.2、R1.3、R1.4。需求文件：`../prd/agent-practice.md`、`../prd/agent-practice/cli.md`。
+
+1. 在干净克隆上 `uv sync` 成功并生成 uv.lock（R1.4）。
+2. R1.1 到 R1.3 的场景在真实进程里逐条通过，其中版本号用 `uv run lime-star --version` 验证。
 3. verify:local 的任务表包含 lint、typecheck、test:unit、lock 四个 Python 任务，且全部通过。
 4. CI 工作流跑通一次。
 
@@ -98,13 +102,13 @@ lime 仓库根 AGENTS.md 的"协议与质量"，以及 internal/aiprompts/qualit
 
 ### 你的验收动作
 
-1. 亲手跑 `uv run lime-star --version` 和 `npm run verify:local -- --full`。
+1. 亲手跑 `uv run lime-star --version`、`uv run lime-star --help`、一个不存在的参数，以及 `npm run verify:local -- --full`。
 2. 在 src 里故意放一个未使用的导入，确认 lint 任务失败；删掉后确认通过。
 3. 问 Agent：四个 Python 任务各自的触发路径是什么，为什么 lock 只由 pyproject.toml 触发。
 
 ### 开工话术
 
-开始 P0。先读 AGENTS.md 和 internal/aiprompts/architecture.md，声明你的写集，在 internal/exec-plans/ 下新建 p0-bootstrap-plan.md，按路线图 P0 的退出条件实现，完成后按 AGENTS.md 执行方式第 4 条汇报。
+开始 P0。先读 AGENTS.md、internal/aiprompts/architecture.md、internal/prd/agent-practice.md 和 internal/prd/agent-practice/cli.md，声明你的写集，在 internal/exec-plans/ 下新建 p0-bootstrap-plan.md，按路线图 P0 的退出条件实现，完成后按 AGENTS.md 执行方式第 4 条汇报。
 
 ## P1 chat：最小对话
 
@@ -114,9 +118,12 @@ lime 仓库根 AGENTS.md 的"协议与质量"，以及 internal/aiprompts/qualit
 
 ### 退出条件
 
-1. 用真实模型连续对话至少三轮，模型记得前面的内容。
-2. 每次模型请求在请求日志里有一条记录，含 session_id、thread_id、turn_id、request_id、模型名、状态、耗时和 token 用量；不含提示内容和密钥。
-3. 密钥从环境变量或 .env 读取，.env 不入库，密钥守卫脚本通过。
+交付需求：R2.1、R2.2、R3.1 到 R3.3、R4.1 到 R4.6、R12.4 到 R12.6、R13.1 到 R13.13、R14.1 到 R14.4。其中 R14.1 到 R14.4 在本阶段写进系统指令，行为验证在 P4 和 P6。需求文件：`../prd/agent-practice.md`、`../prd/agent-practice/cli.md`、`../prd/agent-practice/turn.md`。
+
+1. 交付需求逐条有验证记录，每条至少一个场景通过。
+2. Live：用真实模型连续对话至少三轮，模型记得前面的内容（R2.1-S1）。
+3. Gate B：真实 CLI 进程里，请求日志满足 R3.1 到 R3.3，终端输出和日志里搜不到密钥（R4.3）。
+4. 密钥守卫脚本通过（R4.5、R4.6）。
 
 ### 证据等级
 
@@ -134,18 +141,19 @@ lime 仓库 internal/aiprompts/prompt-foundation.md（基础指令只有一个�
 - 新增 scripts/security 一级目录：在 P1 计划里写明理由，再更新冻结基线。
 - model_provider 成为 P1 的 current owner。
 - app 回合入口在本阶段建立最小形态（start_turn），CLI 只调用它。
-- 运行时产物目录 .lime-star 建立，请求日志写入 .lime-star/logs。
+- 运行时产物目录 .lime-star 建立，请求日志写入 .lime-star/logs（需求决策 D-29）。
 
 ### 你的验收动作
 
 1. 亲手用 `lime-star` 对话三轮。
 2. 跑 `git check-ignore .env`，确认密钥文件不在版本库里。
 3. 打开请求日志，确认没有提示内容和密钥。
-4. 问 Agent：为什么 CLI 不直接调用模型，而要经过 app 回合入口。
+4. 试一次缺少 LIME_STAR_API_KEY 的启动，再在一轮对话进行中按一次 Ctrl+C，核对 R4.2、R12.5、R13.11。
+5. 问 Agent：为什么 CLI 不直接调用模型，而要经过 app 回合入口。
 
 ### 开工话术
 
-开始 P1。先读 AGENTS.md、internal/aiprompts/architecture.md 和 internal/aiprompts/governance.md，声明你的写集，新建 p1-chat-plan.md，按路线图 P1 的退出条件实现，凭证规则和守卫一起落地，完成后按 AGENTS.md 执行方式第 4 条汇报。
+开始 P1。先读 AGENTS.md、internal/aiprompts/architecture.md、internal/aiprompts/governance.md、internal/prd/agent-practice.md、internal/prd/agent-practice/cli.md 和 internal/prd/agent-practice/turn.md，声明你的写集，新建 p1-chat-plan.md，按路线图 P1 的退出条件实现，凭证规则和守卫一起落地，完成后按 AGENTS.md 执行方式第 4 条汇报。
 
 ## P2 loop-core：回合循环纯核心与工具注册
 
@@ -155,10 +163,13 @@ lime 仓库 internal/aiprompts/prompt-foundation.md（基础指令只有一个�
 
 ### 退出条件
 
-1. 回合循环状态机在不联网、不依赖模型客户端的单元测试里覆盖四种转移：继续、达到最大步数、模型出错、用户取消。
-2. 工具注册表支持按名称注册与查找；每个工具有名称、描述、JSON Schema 参数和执行函数。
-3. read_file 工具可被注册，并在入口集成测试里被调用。
-4. 循环模块的导入列表里没有模型客户端、工具实现或存储。
+交付需求：R5.1 到 R5.3、R12.1 到 R12.3，以及 R12.4、R12.5 的状态转移部分。需求文件：`../prd/agent-practice.md`、`../prd/agent-practice/turn.md`、`../prd/agent-practice/tools.md`。
+
+1. 回合循环状态机在不联网、不依赖模型客户端的单元测试里覆盖四种转移：继续、达到步数上限（R12.3）、模型出错（R12.4）、用户取消（R12.5）。
+2. 工具结果不打断回合（R12.2），循环按 R12.1 的顺序进行。
+3. 工具注册表支持按名称注册与查找；每个工具有名称、描述、JSON Schema 参数和执行函数。
+4. read_file 可被注册，它的行为满足 R5.1 到 R5.3，在入口集成测试里验证。
+5. 循环模块的导入列表里没有模型客户端、工具实现或存储。
 
 ### 证据等级
 
@@ -183,7 +194,7 @@ lime 仓库 lime-rs/crates/agent-runtime/src/reply_loop.rs（实现约 50 行的
 
 ### 开工话术
 
-开始 P2。先读 AGENTS.md、internal/aiprompts/architecture.md 和 quality-workflow.md，声明你的写集，新建 p2-loop-core-plan.md，按路线图 P2 的退出条件实现，在 architecture.md 追加 Owner 章节和确认块，完成后按 AGENTS.md 执行方式第 4 条汇报。
+开始 P2。先读 AGENTS.md、internal/aiprompts/architecture.md、quality-workflow.md、internal/prd/agent-practice.md、internal/prd/agent-practice/turn.md 和 internal/prd/agent-practice/tools.md，声明你的写集，新建 p2-loop-core-plan.md，按路线图 P2 的退出条件实现，在 architecture.md 追加 Owner 章节和确认块，完成后按 AGENTS.md 执行方式第 4 条汇报。
 
 ## P3 transcript：transcript 成为唯一事实源
 
@@ -193,11 +204,11 @@ lime 仓库 lime-rs/crates/agent-runtime/src/reply_loop.rs（实现约 50 行的
 
 ### 退出条件
 
-1. 模型的每次响应先落成 item，再进入下一步处理。
-2. 一次响应里的全部工具调用执行完后，结果写回同一份 transcript，之后才发起下一次模型请求。
-3. app 回合入口能从 transcript 还原 thread 的 item 列表。
-4. 用录制的模型响应夹具驱动 start_turn，走完"模型请求工具、执行、回填、再请求、结束"的完整主链。
-5. 第一条契约登记：protocol 下的 item schema 及其消费者登记进 governance/contracts.json，并通过契约检查。
+交付需求：R3.4、R6.1 到 R6.7、R11.1、R12.7、R13.14、R13.15。需求文件：`../prd/agent-practice.md`、`../prd/agent-practice/thread.md`、`../prd/agent-practice/turn.md`、`../prd/agent-practice/cli.md`。
+
+1. 交付需求逐条有验证记录，每条至少一个场景通过，其中包括先记录再执行（R6.2）、结果回填后才请求（R6.3）和只凭记录读回（R6.7）。
+2. 用录制的模型响应夹具驱动 start_turn，走完"模型请求工具、执行、回填、再请求、结束"的完整主链（R12.1）。
+3. 第一条契约登记：protocol 下的 item schema 及其消费者登记进 governance/contracts.json，并通过契约检查。
 
 ### 证据等级
 
@@ -226,20 +237,22 @@ lime 仓库 internal/aiprompts/query-loop.md 的"固定主链"一节（特别是
 
 ### 开工话术
 
-开始 P3。先读 AGENTS.md、internal/aiprompts/architecture.md 和 internal/tech/harness/README.md，声明你的写集，新建 p3-transcript-plan.md，按路线图 P3 的退出条件实现，登记第一条契约，完成后按 AGENTS.md 执行方式第 4 条汇报。
+开始 P3。先读 AGENTS.md、internal/aiprompts/architecture.md、internal/tech/harness/README.md、internal/prd/agent-practice.md、internal/prd/agent-practice/thread.md 和 internal/prd/agent-practice/turn.md，声明你的写集，新建 p3-transcript-plan.md，按路线图 P3 的退出条件实现，登记第一条契约，完成后按 AGENTS.md 执行方式第 4 条汇报。
 
 ## P4 tools-approval：工具、审批与真实冒烟（MVP）
 
 ### 目标
 
-补齐写文件和执行命令两个工具，危险操作必须经用户批准，并用一个真实任务证明 MVP 成立。
+补齐写文件、执行命令和列目录；危险操作必须经用户批准，并用需求里的 MVP 主场景证明 MVP 成立。
 
 ### 退出条件
 
-1. 你亲手在 CLI 里完成一次"让它新建脚本、运行脚本、报告结果"。
-2. 写文件和执行命令被标为危险操作，执行前出现批准提示；被拒绝后不执行，且 transcript 记录拒绝。
-3. 文件路径限定在工作目录内，越界访问被拒绝。
-4. Gate B 冒烟脚本通过：真实启动 CLI 进程，自动输入一段多步任务，断言文件变化、命令输出、批准提示和终端输出。
+交付需求：R5.4、R7.1 到 R7.13、R8.1 到 R8.4、R12.5（终止正在运行的命令）、R13.14、R13.15，并验证 R14.1、R14.2 的行为。需求文件：`../prd/agent-practice.md`、`../prd/agent-practice/tools.md`、`../prd/agent-practice/turn.md`、`../prd/agent-practice/cli.md`。
+
+1. MVP 主场景（见需求全局文件）真实发生：你亲手在 CLI 里完成一次"新建脚本、运行脚本、报告结果"，并至少拒绝一次。
+2. 交付需求逐条有验证记录，每条至少一个场景有对应的测试或冒烟断言。
+3. Gate B 冒烟脚本通过：真实启动 CLI 进程，自动输入一段多步任务，断言文件变化、命令输出、批准提示（R7.7、R7.8）、拒绝后不执行（R7.10）和终端输出。
+4. 按 `../develop/traceable-acceptance.md` 对 MVP 做完整验收，分级结论逐条对应 MVP 范围内的需求。
 
 ### 证据等级
 
@@ -252,7 +265,7 @@ lime 仓库 internal/aiprompts/query-loop.md 里关于 action/respond 与 elicit
 
 ### 落地的规则与守卫
 
-- tool_runtime：新增 write_file、run_command；工作目录边界校验；危险等级标记。
+- tool_runtime：新增 write_file、run_command、list_dir；工作目录边界校验（R8）；危险等级标记（需求决策 D-19）。
 - app 回合入口新增 respond_action：批准与拒绝。CLI 负责向用户提问，并把结果交回 app。
 - 冒烟脚本 scripts/smoke/agent_gate_b.py：新增 scripts/smoke 一级目录，在 P4 计划里写明理由并更新基线。
 - verify-local.mjs 任务表新增 smoke:gate-b，由 src/lime_star/ 触发。
@@ -267,11 +280,11 @@ lime 仓库 internal/aiprompts/query-loop.md 里关于 action/respond 与 elicit
 3. 亲手跑 `uv run python scripts/smoke/agent_gate_b.py`。
 4. 问 Agent：批准状态存在哪里；进程在等待批准时退出会怎样。
 
-MVP 在本阶段结束时达成。之后按 internal/develop/traceable-acceptance.md 对 MVP 做一次完整验收，并给出分级结论。
+MVP 在本阶段结束时达成，范围是需求全局文件"MVP 内"一节列出的需求。
 
 ### 开工话术
 
-开始 P4。先读 AGENTS.md、internal/aiprompts/architecture.md 和 internal/aiprompts/quality-workflow.md，声明你的写集，新建 p4-tools-approval-plan.md，填写验证合同，按路线图 P4 的退出条件实现，完成后按 AGENTS.md 执行方式第 4 条汇报。
+开始 P4。先读 AGENTS.md、internal/aiprompts/architecture.md、internal/aiprompts/quality-workflow.md、internal/prd/agent-practice.md、internal/prd/agent-practice/tools.md、internal/prd/agent-practice/turn.md 和 internal/prd/agent-practice/cli.md，声明你的写集，新建 p4-tools-approval-plan.md，填写验证合同，按路线图 P4 的退出条件实现，完成后按 AGENTS.md 执行方式第 4 条汇报。
 
 ## P5 resume：会话恢复
 
@@ -281,9 +294,12 @@ MVP 在本阶段结束时达成。之后按 internal/develop/traceable-acceptanc
 
 ### 退出条件
 
-1. `lime-star --resume` 在新进程里恢复历史并继续对话。
-2. 回合进行中按 Ctrl+C，thread 和 turn 被记为中断；恢复后可以继续。
-3. 两种恢复都有 Gate B 证据。
+交付需求：R9.1 到 R9.5。需求文件：`../prd/agent-practice.md`、`../prd/agent-practice/thread.md`、`../prd/agent-practice/cli.md`。
+
+1. 交付需求逐条有验证记录，每条至少一个场景通过。
+2. `lime-star --resume` 在新进程里恢复历史并继续对话（R9.1、R9.2）。
+3. 回合进行中按 Ctrl+C 或进程被强制结束，回合被记为中断或被判为中断；恢复后不自动续跑（R9.3、R9.4）。
+4. 两种恢复都有 Gate B 证据。
 
 ### 证据等级
 
@@ -306,7 +322,7 @@ lime 仓库 lime-rs/crates/thread-store 目录的结构（可恢复的 Thread、
 
 ### 开工话术
 
-开始 P5。先读 AGENTS.md、internal/aiprompts/architecture.md 和 internal/aiprompts/quality-workflow.md，声明你的写集，新建 p5-resume-plan.md，填写验证合同，按路线图 P5 的退出条件实现，完成后按 AGENTS.md 执行方式第 4 条汇报。
+开始 P5。先读 AGENTS.md、internal/aiprompts/architecture.md、internal/aiprompts/quality-workflow.md、internal/prd/agent-practice.md、internal/prd/agent-practice/thread.md 和 internal/prd/agent-practice/cli.md，声明你的写集，新建 p5-resume-plan.md，填写验证合同，按路线图 P5 的退出条件实现，完成后按 AGENTS.md 执行方式第 4 条汇报。
 
 ## P6 acceptance-harness：可追踪验收与反馈层
 
@@ -316,10 +332,10 @@ lime 仓库 lime-rs/crates/thread-store 目录的结构（可恢复的 Thread、
 
 ### 退出条件
 
-1. 证据导出：从 transcript 生成一个会话的证据包，含时间线、工具与命令结果、警告和真实发生过的验证记录。
-2. 一次真实失败被提升为仓库内的 replay 四件套：input、expected、grader、evidence-links。
-3. 评测 runner 读取任务集 manifest，对至少一条固定样本产出 JSON 与 Markdown 摘要。
-4. internal/tech/harness/README.md 与 internal/test/harness-evals.md 的状态从"未接入"改为"已接入"，并写明实际入口。
+交付需求：R10.1 到 R10.3、R11.2 到 R11.6，并验证 R14.3、R14.4 的行为。需求文件：`../prd/agent-practice.md`、`../prd/agent-practice/evidence.md`。
+
+1. 交付需求逐条有验证记录，每条至少一个场景通过。
+2. internal/tech/harness/README.md 与 internal/test/harness-evals.md 的状态从"未接入"改为"已接入"，并写明实际入口。
 
 ### 证据等级
 
@@ -344,7 +360,7 @@ lime 仓库 internal/develop/traceable-agent-acceptance-methodology.md、interna
 
 ### 开工话术
 
-开始 P6。先读 AGENTS.md、internal/develop/traceable-acceptance.md、internal/tech/harness/README.md 和 internal/test/harness-evals.md，声明你的写集，新建 p6-acceptance-harness-plan.md，按路线图 P6 的退出条件实现，完成后按 AGENTS.md 执行方式第 4 条汇报。
+开始 P6。先读 AGENTS.md、internal/develop/traceable-acceptance.md、internal/tech/harness/README.md、internal/test/harness-evals.md、internal/prd/agent-practice.md 和 internal/prd/agent-practice/evidence.md，声明你的写集，新建 p6-acceptance-harness-plan.md，按路线图 P6 的退出条件实现，完成后按 AGENTS.md 执行方式第 4 条汇报。
 
 ## P7 扩展（可选）
 
@@ -367,7 +383,7 @@ MVP 之后的扩展候选：多模型路由、TUI、子 Agent、首个 release�
 ### 落地的规则与守卫
 
 - 首个 release 之前，先把 release skill 从骨架补全。
-- 每项扩展都要回答：它是否改变业务主链、协议边界或依赖方向；改变即按重大架构变更填写确认块。
+- 每项扩展都要回答：它是否改变业务主链、协议边界或依赖方向；改变即按重大架构变更填写确认块。扩展先落成需求（新增能力文件，或在现有文件里加条目，未决先问），仓库所有者确认需求后再实现。
 
 ### 你的验收动作
 
