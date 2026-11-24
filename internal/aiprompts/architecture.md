@@ -23,8 +23,8 @@
 | 目录或文件 | 归属 owner | 职责 | 禁止放入 | 状态 |
 | --- | --- | --- | --- | --- |
 | `src/lime_star/cli/` | Surface | 终端入口、参数解析、终端投影、向用户发起审批 | 业务编排、provider 请求拼装、绕过 app 直接调用循环或工具 | 已有 |
-| `src/lime_star/app/` | 回合入口（唯一边界） | start_turn、read_thread、respond_action | 第二套执行链 | 路线图 P1 |
-| `src/lime_star/model_provider/` | 模型边界 | 模型配置、OpenAI 兼容请求、流式解析、请求日志 | 回合循环、工具权限、持久化 | 路线图 P1 |
+| `src/lime_star/app/` | 回合入口（唯一边界） | start_turn、read_thread、respond_action | 第二套执行链 | 已有 |
+| `src/lime_star/model_provider/` | 模型边界 | 模型配置、OpenAI 兼容请求、流式解析、请求日志 | 回合循环、工具权限、持久化 | 已有 |
 | `src/lime_star/protocol/` | 协议类型 | Thread、Turn、Item 的类型与事件形状 | 运行时逻辑、I/O | 路线图 P2 |
 | `src/lime_star/agent_runtime/` | 回合循环 | 循环状态机与回合编排 | provider wire 细节、工具执行、终端输出 | 路线图 P2 |
 | `src/lime_star/tool_runtime/` | 工具边界 | 工具注册、参数校验、路径边界、危险等级、执行 | 终端交互、provider 请求 | 路线图 P2 |
@@ -32,7 +32,7 @@
 | `protocol/` | 契约 schema | Thread、Turn、Item 的 JSON Schema | 实现代码 | 路线图 P3 |
 | `tests/` | 测试 | unit、integration、fixtures | 生产代码、真实凭证 | 已有 |
 | `pyproject.toml`、`uv.lock`、`.python-version` | 依赖与工具链 | 依赖声明与锁定、检查工具配置 | 业务逻辑 | 已有 |
-| `.lime-star/` | 运行时产物 | transcript、请求日志、证据导出；不入库 | 需要长期保留的样本（应提升到 tests/fixtures/） | 路线图 P1 |
+| `.lime-star/` | 运行时产物 | transcript、请求日志、证据导出；不入库 | 需要长期保留的样本（应提升到 tests/fixtures/） | 已有 |
 | `package.json` | 治理命令 | 只承载门禁命令 | 产品依赖 | 已有 |
 | `scripts/` | 工具链 | 治理脚本；冒烟与 harness 脚本随路线图加入 | 业务逻辑 | 已有 |
 | `governance/` | 治理基线 | 基线 JSON 与契约清单 | 临时文件 | 已有 |

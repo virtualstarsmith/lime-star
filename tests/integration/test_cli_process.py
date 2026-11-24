@@ -1,43 +1,31 @@
-"""真实进程里的 lime-star 命令（R1.1 到 R1.3）。
+"""真实进程里的 lime-star 命令。
 
-每条用例都启动已安装的 lime-star 命令，核对退出码、标准输出和标准错误。
-命令来自 uv sync 装好的项目环境，所以要用 uv run pytest 运行。
+P0 的用例覆盖 R1.1 到 R1.3。P1 的用例通过管道驱动一个真实的会话进程。
+证据等级：Gate B，真实进程、真实输入、贯穿主链的可见输出。模型是测试替身
+（本地替身服务，脚本化响应，没有从真实运行录制），不是真实模型。
+覆盖 R3.1、R3.2-S1、R4.1-S1、R4.2-S1、R4.3-S1、R4.3-S2、R13.1-S1、R13.2-S1、
+R13.3-S1、R13.4-S1、R13.5、R13.6-S1、R13.7-S1、R13.8-S1、R13.9-S1、R13.10、R13.13-S1。
 """
 
-import os
+import socket
 import subprocess
-import sys
+from collections.abc import Callable
 from pathlib import Path
 
-import pytest
-
 from lime_star import __version__
-
-MODEL_ENV_PREFIX = "LIME_STAR_"
-
-
-@pytest.fixture(scope="session")
-def lime_star() -> Path:
-    """与运行测试的解释器装在同一个环境里的 lime-star 命令。"""
-    name = "lime-star.exe" if os.name == "nt" else "lime-star"
-    exe = Path(sys.executable).with_name(name)
-    if not exe.is_file():
-        pytest.fail(f"找不到 {exe}：先执行 uv sync，再用 uv run pytest 运行", pytrace=False)
-    return exe
+from tests.integration.fake_model import FAKE_KEY, FAKE_MODEL, FakeModel, Hold, error_body
+from tests.integration.support import (
+    PROMPT,
+    RECORD_KEYS,
+    CliProcess,
+    child_env,
+    read_log,
+    run_lime_star,
+)
 
 
-def run_lime_star(exe: Path, args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
-    """在给定目录里启动命令。环境里不带任何模型配置变量。"""
-    env = {key: value for key, value in os.environ.items() if not key.startswith(MODEL_ENV_PREFIX)}
-    return subprocess.run(
-        [str(exe), *args],
-        cwd=cwd,
-        env=env,
-        capture_output=True,
-        encoding="utf-8",
-        timeout=30,
-        check=False,
-    )
+def banner_line(output: str) -> str:
+    return output.splitlines()[0]
 
 
 def test_version_prints_one_line_and_exits_zero(lime_star: Path, tmp_path: Path) -> None:
@@ -60,8 +48,8 @@ def test_help_lists_version_with_description(lime_star: Path, tmp_path: Path) ->
     """R1.2-S1：帮助里有 --version 和一句话说明，退出码为 0。"""
     result = run_lime_star(lime_star, ["--help"], tmp_path)
     assert result.returncode == 0
-    assert "--version" in result.stdout
-    assert "显示版本号并退出" in result.stdout
+    assert "--version    显示版本号并退出" in result.stdout
+    assert "不带参数：在工作目录开始一个会话" in result.stdout
     assert result.stderr == ""
 
 
@@ -79,9 +67,252 @@ def test_unknown_argument_exits_two_and_names_it(lime_star: Path, tmp_path: Path
     assert result.stdout == ""
 
 
-def test_bare_command_is_a_usage_error_for_now(lime_star: Path, tmp_path: Path) -> None:
-    """过渡行为，没有需求编号。路线图 P1 用 R13.1 取代它，届时删除本用例。"""
-    result = run_lime_star(lime_star, [], tmp_path)
-    assert result.returncode == 2
-    assert "用法" in result.stderr
-    assert result.stdout == ""
+def test_session_shows_version_and_workdir_then_exits_on_command(
+    start_cli: Callable[..., CliProcess], model_env: dict[str, str], tmp_path: Path
+) -> None:
+    """R13.1-S1、R13.4-S1、R13.10-S1：一行版本号和工作目录、输入提示；/exit 以 0 结束。"""
+    process = start_cli(model_env)
+    process.wait_for("stdout", PROMPT)
+    process.send("/exit")
+    assert process.finish() == 0
+    assert process.output("stdout").startswith(f"lime-star {__version__}  ")
+    shown = Path(banner_line(process.output("stdout")).split("  ", 1)[1])
+    assert shown.samefile(tmp_path)
+    assert process.output("stdout").endswith(PROMPT)
+    assert process.output("stderr") == ""
+
+
+def test_message_goes_to_the_configured_model_and_reply_is_shown(
+    start_cli: Callable[..., CliProcess],
+    model_env: dict[str, str],
+    fake_model: FakeModel,
+    log_path: Path,
+) -> None:
+    """R13.2-S1、R13.5-S1、R13.7-S1、R4.1-S1：消息发给配置的模型，回复出现在标准输出。"""
+    fake_model.reply("你好，我是替身模型。")
+    process = start_cli(model_env)
+    process.wait_for("stdout", PROMPT)
+    process.send("你好")
+    process.wait_for("stdout", "你好，我是替身模型。\n")
+    process.send("/exit")
+    assert process.finish() == 0
+    [request] = fake_model.requests()
+    assert request.path == "/chat/completions"
+    assert request.model == FAKE_MODEL
+    assert request.authorization == f"Bearer {FAKE_KEY}"
+    assert [message["role"] for message in request.messages] == ["system", "user"]
+    assert request.messages[1]["content"] == "你好"
+    assert process.output("stderr") == ""
+    assert "\x1b" not in process.output("stdout")
+    assert [record["status"] for record in read_log(log_path)] == ["ok"]
+
+
+def test_chinese_output_redirected_to_a_file_is_utf8(
+    lime_star: Path, model_env: dict[str, str], fake_model: FakeModel, tmp_path: Path
+) -> None:
+    """R13.6-S1：标准输出重定向到文件时，文件是合法的 UTF-8，中文不乱码。"""
+    fake_model.reply("中文回复：你好，世界。")
+    out_path = tmp_path / "stdout.txt"
+    with out_path.open("wb") as out:
+        result = subprocess.run(
+            [str(lime_star)],
+            cwd=tmp_path,
+            env=child_env(model_env),
+            input="你好\n/exit\n".encode(),
+            stdout=out,
+            stderr=subprocess.PIPE,
+            timeout=30,
+            check=False,
+        )
+    assert result.returncode == 0
+    text = out_path.read_bytes().decode("utf-8")
+    assert "中文回复：你好，世界。" in text
+    assert "\ufffd" not in text
+
+
+def test_missing_config_exits_two_and_names_the_variable(
+    start_cli: Callable[..., CliProcess], fake_model: FakeModel, tmp_path: Path
+) -> None:
+    """R4.2-S1：缺少 LIME_STAR_API_KEY 时以 2 退出并点名它，不发模型请求，也不建运行时目录。"""
+    process = start_cli({"LIME_STAR_BASE_URL": fake_model.url, "LIME_STAR_MODEL": FAKE_MODEL})
+    assert process.finish() == 2
+    assert process.output("stdout") == ""
+    stderr = process.output("stderr")
+    assert stderr == (
+        "lime-star：缺少模型配置：LIME_STAR_API_KEY。"
+        "请设置这些环境变量，或在 .env 里填写（样例见 .env.example）。\n"
+    )
+    assert fake_model.requests() == []
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_env_file_in_the_workdir_supplies_the_config(
+    start_cli: Callable[..., CliProcess], fake_model: FakeModel, tmp_path: Path
+) -> None:
+    """决策 D-01、R4.1：环境变量缺项时读工作目录下的 .env。"""
+    tmp_path.joinpath(".env").write_text(
+        f"LIME_STAR_BASE_URL={fake_model.url}\n"
+        f"LIME_STAR_API_KEY={FAKE_KEY}\n"
+        f"LIME_STAR_MODEL={FAKE_MODEL}\n",
+        encoding="utf-8",
+    )
+    fake_model.reply("来自 .env 的配置也能用。")
+    process = start_cli()
+    process.wait_for("stdout", PROMPT)
+    process.send("你好")
+    process.wait_for("stdout", "来自 .env 的配置也能用。\n")
+    process.send("/exit")
+    assert process.finish() == 0
+    [request] = fake_model.requests()
+    assert (request.model, request.authorization) == (FAKE_MODEL, f"Bearer {FAKE_KEY}")
+
+
+def test_key_stays_out_of_terminal_and_log_even_if_the_api_echoes_it(
+    start_cli: Callable[..., CliProcess],
+    model_env: dict[str, str],
+    fake_model: FakeModel,
+    log_path: Path,
+) -> None:
+    """R4.3-S1、R4.3-S2、R13.5-S2、R13.10-S2：接口在错误正文里回显密钥，终端和日志里也搜不到它。
+
+    回合出错写标准错误；进程本身没有出错，之后正常退出时退出码仍是 0。
+    """
+    fake_model.fail(401, error_body(f"Incorrect API key provided: {FAKE_KEY}"))
+    fake_model.reply("第二次成功。")
+    process = start_cli(model_env)
+    process.wait_for("stdout", PROMPT)
+    process.send("第一问")
+    process.wait_for("stderr", "回合出错：鉴权失败（HTTP 401）。\n")
+    process.wait_for("stdout", PROMPT, count=2)
+    process.send("第二问")
+    process.wait_for("stdout", "第二次成功。\n")
+    process.send("/exit")
+    assert process.finish() == 0
+    assert process.output("stderr") == "回合出错：鉴权失败（HTTP 401）。\n"
+    assert process.output("stdout").count(PROMPT) == 3
+    records = read_log(log_path)
+    assert [record["status"] for record in records] == ["failed", "ok"]
+    assert records[0]["error"] == {"kind": "auth", "status_code": 401, "detail": ""}
+    for text in (process.output("stdout"), process.output("stderr"), log_path.read_text("utf-8")):
+        assert FAKE_KEY not in text
+        assert "Incorrect API key" not in text
+
+
+def test_input_during_a_turn_is_dropped_and_reported(
+    start_cli: Callable[..., CliProcess], model_env: dict[str, str], fake_model: FakeModel
+) -> None:
+    """R13.8-S1、R13.9-S1：回合进行中的两行输入不进入会话，回合结束后提示忽略了两行。"""
+    hold = Hold()
+    fake_model.reply("第一答", hold=hold)
+    fake_model.reply("第二答")
+    process = start_cli(model_env)
+    process.wait_for("stdout", PROMPT)
+    process.send("第一问")
+    fake_model.wait_for_requests(1)
+    process.send("被丢弃甲")
+    process.send("被丢弃乙")
+    hold.release()
+    process.wait_for("stdout", "第一答\n")
+    process.wait_for("stderr", "已忽略 2 行回合中收到的输入。\n")
+    process.send("第二问")
+    process.wait_for("stdout", "第二答\n")
+    process.send("/exit")
+    assert process.finish() == 0
+    [first, second] = fake_model.requests()
+    assert first.messages[1]["content"] == "第一问"
+    assert [message["content"] for message in second.messages[1:]] == [
+        "第一问",
+        "第一答",
+        "第二问",
+    ]
+    assert process.output("stderr") == "已忽略 2 行回合中收到的输入。\n"
+
+
+def test_blank_lines_do_not_start_a_turn(
+    start_cli: Callable[..., CliProcess], model_env: dict[str, str], fake_model: FakeModel
+) -> None:
+    """R13.3-S1：只按回车不开始回合，继续等待输入。"""
+    fake_model.reply("答")
+    process = start_cli(model_env)
+    process.wait_for("stdout", PROMPT)
+    process.send("")
+    process.send("   ")
+    process.wait_for("stdout", PROMPT, count=3)
+    process.send("问")
+    process.wait_for("stdout", "答\n")
+    process.send("/exit")
+    assert process.finish() == 0
+    assert len(fake_model.requests()) == 1
+
+
+def test_closed_input_ends_the_session_with_zero(
+    start_cli: Callable[..., CliProcess], model_env: dict[str, str], fake_model: FakeModel
+) -> None:
+    """R13.13-S1：标准输入关闭后，正在进行的回合照常完成，会话以 0 退出。"""
+    fake_model.reply("答")
+    process = start_cli(model_env)
+    process.wait_for("stdout", PROMPT)
+    process.send("问")
+    process.close_input()
+    process.wait_for("stdout", "答\n")
+    assert process.finish() == 0
+    assert process.output("stdout").endswith("答\n" + PROMPT)
+    assert process.output("stderr") == ""
+
+
+def test_unreachable_model_is_reported_and_not_retried(
+    start_cli: Callable[..., CliProcess], tmp_path: Path, log_path: Path
+) -> None:
+    """R12.4、决策 D-11：连不上模型时说明网络错误，不自动重试，随后回到输入提示。"""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    process = start_cli(
+        {
+            "LIME_STAR_BASE_URL": f"http://127.0.0.1:{port}/v1",
+            "LIME_STAR_API_KEY": FAKE_KEY,
+            "LIME_STAR_MODEL": FAKE_MODEL,
+        }
+    )
+    process.wait_for("stdout", PROMPT)
+    process.send("问")
+    process.wait_for("stderr", "回合出错：网络错误。\n")
+    process.wait_for("stdout", PROMPT, count=2)
+    process.send("/exit")
+    assert process.finish() == 0
+    [record] = read_log(log_path)
+    assert record["status"] == "failed"
+    assert record["error"] == {"kind": "network", "status_code": None, "detail": ""}
+
+
+def test_request_log_of_a_real_session_has_one_record_per_request(
+    start_cli: Callable[..., CliProcess],
+    model_env: dict[str, str],
+    fake_model: FakeModel,
+    log_path: Path,
+) -> None:
+    """R3.1、R3.2-S1：两轮对话两条字段齐全的记录，可按会话和回合关联；日志里没有消息内容和密钥。"""
+    marker = "UNIQUE-MARKER-九九九九"
+    fake_model.reply("第一答")
+    fake_model.reply("第二答")
+    process = start_cli(model_env)
+    process.wait_for("stdout", PROMPT)
+    process.send(f"第一问 {marker}")
+    process.wait_for("stdout", "第一答\n")
+    process.send("第二问")
+    process.wait_for("stdout", "第二答\n")
+    process.send("/exit")
+    assert process.finish() == 0
+    records = read_log(log_path)
+    assert len(records) == 2
+    assert [list(record) for record in records] == [RECORD_KEYS, RECORD_KEYS]
+    assert [record["status"] for record in records] == ["ok", "ok"]
+    assert records[0]["session_id"] == records[1]["session_id"]
+    assert records[0]["thread_id"] == records[1]["thread_id"]
+    assert records[0]["turn_id"] != records[1]["turn_id"]
+    assert records[0]["request_id"] != records[1]["request_id"]
+    assert all(record["model"] == FAKE_MODEL for record in records)
+    raw = log_path.read_text(encoding="utf-8")
+    assert marker not in raw
+    assert "第一答" not in raw
+    assert FAKE_KEY not in raw

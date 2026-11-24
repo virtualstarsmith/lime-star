@@ -1,25 +1,31 @@
 """lime-star 命令入口。
 
-现在只处理 --version、--help 和未知参数（需求 R1.1 到 R1.3）。
-不带参数时开始会话（R13.1）由路线图 P1 交付，在那之前按用法错误处理。
+--version、--help 和未知参数见需求 R1；不带参数时在工作目录开始会话（R13.1）。
 退出码只有三种（R13.10）：0 正常结束，1 运行期错误，2 用法或配置错误。
 """
 
 import io
+import os
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TextIO
 
 from lime_star import __version__
+from lime_star.app import ConfigError, SessionError, open_session
+from lime_star.cli.chat import StdinLines, chat
 
 EXIT_OK = 0
+EXIT_RUNTIME = 1
 EXIT_USAGE = 2
 
 PROG = "lime-star"
 
 USAGE = """\
 用法：lime-star [--version]
+
+不带参数：在工作目录开始一个会话
 
 选项：
   --version    显示版本号并退出
@@ -38,7 +44,7 @@ class Args:
 
 
 class UsageError(Exception):
-    """用法错误：有未知的参数，或者没有给出任何参数。"""
+    """用法错误：有未知的参数。"""
 
 
 def parse_args(argv: Sequence[str]) -> Args:
@@ -57,25 +63,56 @@ def parse_args(argv: Sequence[str]) -> Args:
 
 def main(argv: Sequence[str] | None = None) -> int:
     """命令入口，返回值就是进程退出码。"""
-    _use_utf8(sys.stdout, sys.stderr)
+    _use_utf8(sys.stdout, sys.stderr, sys.stdin)
     args = list(sys.argv[1:] if argv is None else argv)
     try:
         parsed = parse_args(args)
-        if not (parsed.show_version or parsed.show_help):
-            raise UsageError("没有给出参数。")
     except UsageError as exc:
         print(f"{PROG}：{exc}", file=sys.stderr)
         sys.stderr.write(USAGE)
         return EXIT_USAGE
     if parsed.show_version:
         print(f"{PROG} {__version__}")
-    else:
+        return EXIT_OK
+    if parsed.show_help:
         sys.stdout.write(USAGE)
-    return EXIT_OK
+        return EXIT_OK
+    return run_chat()
 
 
-def _use_utf8(*streams: TextIO) -> None:
-    """让标准输出和标准错误一律用 UTF-8。
+def run_chat() -> int:
+    """不带参数：读取配置，开始会话。"""
+    workdir = Path.cwd()
+    try:
+        session = open_session(env=os.environ, workdir=workdir)
+    except ConfigError as exc:
+        sys.stderr.write(f"{PROG}：{exc.message}\n")
+        return EXIT_USAGE
+    except SessionError as exc:
+        sys.stderr.write(f"{PROG}：{exc}\n")
+        return EXIT_RUNTIME
+    except KeyboardInterrupt:
+        return EXIT_OK
+    except Exception as exc:
+        return _runtime_error(exc)
+    lines = StdinLines(sys.stdin)
+    lines.start()
+    try:
+        return chat(session, lines, sys.stdout, sys.stderr, workdir)
+    except KeyboardInterrupt:
+        return EXIT_OK
+    except Exception as exc:
+        return _runtime_error(exc)
+
+
+def _runtime_error(exc: Exception) -> int:
+    # 只写异常类名：异常文本可能带着请求详情或路径以外的敏感内容。
+    sys.stderr.write(f"{PROG}：运行期错误：{type(exc).__name__}。\n")
+    return EXIT_RUNTIME
+
+
+def _use_utf8(*streams: TextIO | None) -> None:
+    """让标准输入、输出、错误一律用 UTF-8。
 
     Windows 下它们接到管道或文件时，默认会用本地代码页。
     """

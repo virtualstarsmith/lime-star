@@ -10,9 +10,21 @@
 - 规则入口与阅读顺序见 [internal/README.md](internal/README.md)。
 - 当前进度见 [internal/exec-plans/README.md](internal/exec-plans/README.md)，分阶段路线图见 [internal/roadmap/README.md](internal/roadmap/README.md)。
 
+## 运行对话命令
+
+路线图 P1 起，不带参数运行 `lime-star` 在工作目录开始一个多轮对话会话：
+
+```bash
+uv sync
+cp .env.example .env   # 填入 OpenAI 兼容接口的地址、密钥和模型名；也可以改用同名的环境变量
+uv run lime-star
+```
+
+每次模型请求在工作目录的 `.lime-star/logs/requests.jsonl` 里追加一行，只记时间、标识、状态、耗时和 token 用量。输入 `/exit` 退出。
+
 ## 本地门禁
 
-需要 Node 18 或更高版本。治理脚本零依赖；Python 任务（lock、lint、typecheck、test:unit）需要 uv，首次运行前先执行一次 `uv sync`。
+需要 Node 18 或更高版本。治理脚本零依赖；Python 任务（lock、lint、typecheck、test:unit、test:guards）需要 uv，首次运行前先执行一次 `uv sync`。
 
 ```bash
 uv sync                         # 首次运行前：按 uv.lock 建好 .venv

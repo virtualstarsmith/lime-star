@@ -9,14 +9,21 @@ description = "最小的命令行 Agent：带着项目目录读写文件、执�
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
-# 运行时不依赖第三方包。模型接口的 SDK 随路线图 P1 加入。
-dependencies = []
+# 运行时只依赖模型接口的官方 SDK；开发依赖在下面的 dependency-groups。
+dependencies = [
+    "openai>=3.58.0",
+]
 
 [project.scripts]
 lime-star = "lime_star.cli.main:main"
 
 [dependency-groups]
-dev = ["pytest", "ruff", "mypy"]
+dev = [
+    "pytest",
+    "ruff",
+    "mypy",
+    "httpx2>=2.16.2",
+]
 
 [build-system]
 requires = ["hatchling"]

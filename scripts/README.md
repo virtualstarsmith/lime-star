@@ -13,12 +13,13 @@
 | `check-scripts-baseline.mjs` | scripts 目录冻结基线与垃圾产物检查 | `node scripts/check-scripts-baseline.mjs [--root <dir>] [--update]` |
 | `check-contracts.mjs` | 契约同步门禁：schema 变更必须同步消费者并显式确认 | `node scripts/check-contracts.mjs [--root <dir>] [--update]` |
 | `check-doc-links.mjs` | 文档交叉引用守卫：规则、计划、手册之间的相对引用不许断链；带目录的引用必须按路径在仓库内找到，只有裸文件名可按文件名全树查找 | `node scripts/check-doc-links.mjs [--root <dir>]` |
+| `scripts/security/check-secrets.mjs` | 密钥守卫：`.env` 必须被 Git 忽略且不被跟踪；已跟踪文件里不得出现常见格式的密钥。报出位置和规则名，不回显密钥 | `node scripts/security/check-secrets.mjs [--root <dir>]` |
 
 所有脚本零依赖（Node 18 或更高），必须在**仓库根目录**运行，违规时退出码非 0。
 
 ## 接入状态
 
-lime-star 已于 2026-11-23 完成接入，记录见 `internal/exec-plans/paradigm-port-plan.md`。当前基线：根文件 6 个（5 个脚本加 README），没有一级目录。
+lime-star 已于 2026-11-23 完成接入，记录见 `internal/exec-plans/paradigm-port-plan.md`。当前基线：根文件 6 个（5 个脚本加 README），一级目录 1 个（security，路线图 P1 建立，记录见 `internal/exec-plans/p1-chat-plan.md`）。
 
 三个基线文件都在 `governance/` 下，属于**必须提交**的版本化文件：
 
@@ -26,9 +27,13 @@ lime-star 已于 2026-11-23 完成接入，记录见 `internal/exec-plans/paradi
 - `governance/file-size-baseline.json`：超过 800 行文件的行数棘轮；只在拆分完成或明确登记退出条件时收缩式更新。
 - `governance/contracts.json`：契约清单，人工维护。`governance/contracts-state.json`：schema 哈希，由 `--update` 生成。
 
-## 路线图会新增的目录
+## 路线图新增的目录
 
-路线图计划新增三个一级目录：security（P1，密钥守卫）、smoke（P4，Gate B 冒烟）、harness（P6，证据导出与评测）。每次新增都必须在该阶段的执行计划里写明理由，再运行 `node scripts/check-scripts-baseline.mjs --update`。
+路线图分阶段新增三个一级目录：security（P1，密钥守卫，已建立）、smoke（P4，Gate B 冒烟）、harness（P6，证据导出与评测）。每次新增都必须在该阶段的执行计划里写明理由，再运行 `node scripts/check-scripts-baseline.mjs --update`。
+
+## 守卫脚本的回归用例
+
+治理脚本自己也要有仓库内的回归。用例放在 `tests/integration/` 下，文件名以 `test_guard_` 开头：在临时目录里运行真实的脚本进程，断言退出码和输出。verify-local 的任务 test:guards 在 scripts/ 或这些用例变动时执行它们。
 
 ## 重新生成基线
 

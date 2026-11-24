@@ -26,6 +26,12 @@ const TASKS = [
     cmd: 'node scripts/check-scripts-baseline.mjs',
   },
   {
+    // 密钥可能出现在任何文件里，所以恒跑（路线图 P1 接入）。
+    name: 'secrets',
+    prefixes: [],
+    cmd: 'node scripts/security/check-secrets.mjs',
+  },
+  {
     name: 'contracts',
     prefixes: ['protocol/', 'src/lime_star/protocol/', 'governance/'],
     cmd: 'node scripts/check-contracts.mjs',
@@ -57,6 +63,12 @@ const TASKS = [
     name: 'test:unit',
     prefixes: ['src/', 'tests/', 'pyproject.toml', 'uv.lock'],
     cmd: 'uv run pytest -q',
+  },
+  // 治理脚本的回归用例（路线图 P1 接入）：改了 scripts/ 就要验证脚本的行为，不只是查格式。
+  {
+    name: 'test:guards',
+    prefixes: ['scripts/', 'tests/integration/test_guard_'],
+    cmd: 'uv run pytest tests/integration -q -k test_guard_',
   },
 ];
 
