@@ -12,7 +12,7 @@
 ## 当前事实
 
 - 仓库已建立规则、事实源、计划、验证四层，以及验收方法论和 harness 反馈层的目标骨架，见 `../exec-plans/paradigm-port-plan.md`。
-- P0 已于 2026-11-24 交付工程骨架和空命令；P1 已于 2026-11-24 交付多轮对话、请求日志和凭证守卫。回合循环、工具、持久化尚未开始。目标布局见 internal/aiprompts/architecture.md。
+- P0 已于 2026-11-24 交付工程骨架和空命令；P1 已于 2026-11-24 交付多轮对话、请求日志和凭证守卫；P2 已于 2026-11-24 交付回合循环、工具注册表和 read_file（提交 2cc4cbe，CI 还没有跑）。P3 进行中。目标布局见 internal/aiprompts/architecture.md。
 - 代码由 Agent 编写，仓库所有者验收；提交按根 AGENTS.md 的提交规则执行。
 - 技术栈：Python 3.11 及以上（uv）；OpenAI 兼容模型接口；治理门禁是零依赖的 Node 脚本。
 - 需求已于 2026-11-23 重写为行为规格：一个全局文件加五个能力文件，R1 到 R14，见 `../exec-plans/prd-alignment-plan.md`；仓库所有者于 2026-11-24 确认，原有的三个未决问题按推荐答案落成决策。各阶段的"交付需求"引用它的编号，不再复述需求。
@@ -61,7 +61,7 @@
 | P0 | bootstrap | 工程骨架与空命令 | Gate B | 无 |
 | P1 | chat | 接真实模型的多轮对话 | Live + Gate B | 无 |
 | P2 | loop-core | 回合循环纯核心与工具注册 | Unit + 入口集成 | 无 |
-| P3 | transcript | transcript 成为唯一事实源 | Current fixture + Gate A | 无 |
+| P3 | transcript | transcript 成为唯一事实源；read_file 带着路径边界进入正式命令 | Current fixture + Gate A | 仓库所有者于 2026-11-24 把 read_file 从 P4 提前 |
 | P4 | tools-approval | 写文件、执行命令、审批 | Gate B | MVP |
 | P5 | resume | 中断后接着做 | Gate B | 无 |
 | P6 | acceptance-harness | 失败变成资产 | 入口集成 | 无 |
@@ -200,11 +200,11 @@ lime 仓库 lime-rs/crates/agent-runtime/src/reply_loop.rs（实现约 50 行的
 
 ### 目标
 
-让每一次模型响应和每一次工具结果都落到同一份追加式 transcript，终端显示和证据只能从它派生。
+让每一次模型响应和每一次工具结果都落到同一份追加式 transcript，终端显示和证据只能从它派生。read_file 带着路径边界进入正式命令。
 
 ### 退出条件
 
-交付需求：R3.4、R6.1 到 R6.7、R11.1、R12.7、R13.14、R13.15。需求文件：`../prd/agent-practice.md`、`../prd/agent-practice/thread.md`、`../prd/agent-practice/turn.md`、`../prd/agent-practice/cli.md`。
+交付需求：R3.4、R6.1 到 R6.7、R11.1、R12.7、R13.14、R13.15，以及 R8.1 到 R8.3 里 read_file 的部分。需求文件：`../prd/agent-practice.md`、`../prd/agent-practice/thread.md`、`../prd/agent-practice/turn.md`、`../prd/agent-practice/cli.md`、`../prd/agent-practice/tools.md`。
 
 1. 交付需求逐条有验证记录，每条至少一个场景通过，其中包括先记录再执行（R6.2）、结果回填后才请求（R6.3）和只凭记录读回（R6.7）。
 2. 用录制的模型响应夹具驱动 start_turn，走完"模型请求工具、执行、回填、再请求、结束"的完整主链（R12.1）。
@@ -227,6 +227,7 @@ lime 仓库 internal/aiprompts/query-loop.md 的"固定主链"一节（特别是
 - 行数门禁把 .lime-star 加入排除目录，因为它是运行时产物。
 - 根 AGENTS.md 加入硬规则：任何显示、导出或测试不得自己拼第二份会话真相。守卫是 Gate A 测试：read_thread 的结果必须与 transcript 一致。
 - architecture.md 追加"Owner 章节：transcript 事实源"。
+- read_file 进入正式命令：tool_runtime 的工作目录边界（R8.1 到 R8.3）随它在 P3 落地。list_dir 与 write_file 仍由 P4 交付，并受同一边界约束。
 
 ### 你的验收动作
 
@@ -234,6 +235,7 @@ lime 仓库 internal/aiprompts/query-loop.md 的"固定主链"一节（特别是
 2. 亲手跑 `npm run test:contracts`。
 3. 抽查一个夹具：问 Agent 它是从哪次真实请求录制的。
 4. 问 Agent：为什么工具结果要全部回填之后才进行下一次请求。
+5. 让它读工作目录之外的一个文件，确认被拒绝。
 
 ### 开工话术
 
@@ -247,7 +249,7 @@ lime 仓库 internal/aiprompts/query-loop.md 的"固定主链"一节（特别是
 
 ### 退出条件
 
-交付需求：R5.4、R7.1 到 R7.13、R8.1 到 R8.4、R12.5（终止正在运行的命令）、R13.14、R13.15，并验证 R14.1、R14.2 的行为。需求文件：`../prd/agent-practice.md`、`../prd/agent-practice/tools.md`、`../prd/agent-practice/turn.md`、`../prd/agent-practice/cli.md`。
+交付需求：R5.4、R7.1 到 R7.13、R8.1 到 R8.3 里 list_dir 与 write_file 的部分、R8.4、R12.5（终止正在运行的命令），并验证 R14.1、R14.2 的行为。需求文件：`../prd/agent-practice.md`、`../prd/agent-practice/tools.md`、`../prd/agent-practice/turn.md`、`../prd/agent-practice/cli.md`。
 
 1. MVP 主场景（见需求全局文件）真实发生：你亲手在 CLI 里完成一次"新建脚本、运行脚本、报告结果"，并至少拒绝一次。
 2. 交付需求逐条有验证记录，每条至少一个场景有对应的测试或冒烟断言。
@@ -265,7 +267,7 @@ lime 仓库 internal/aiprompts/query-loop.md 里关于 action/respond 与 elicit
 
 ### 落地的规则与守卫
 
-- tool_runtime：新增 write_file、run_command、list_dir；工作目录边界校验（R8）；危险等级标记（需求决策 D-19）。
+- tool_runtime：新增 write_file、run_command、list_dir，它们接上 P3 已有的工作目录边界；危险等级标记（需求决策 D-19）。
 - app 回合入口新增 respond_action：批准与拒绝。CLI 负责向用户提问，并把结果交回 app。
 - 冒烟脚本 scripts/smoke/agent_gate_b.py：新增 scripts/smoke 一级目录，在 P4 计划里写明理由并更新基线。
 - verify-local.mjs 任务表新增 smoke:gate-b，由 src/lime_star/ 触发。
@@ -276,7 +278,7 @@ lime 仓库 internal/aiprompts/query-loop.md 里关于 action/respond 与 elicit
 ### 你的验收动作
 
 1. 亲手完成 MVP 任务，并在批准提示处至少拒绝一次。
-2. 让它尝试读工作目录之外的文件，确认被拒绝。
+2. 让它尝试写工作目录之外的路径，确认被拒绝。
 3. 亲手跑 `uv run python scripts/smoke/agent_gate_b.py`。
 4. 问 Agent：批准状态存在哪里；进程在等待批准时退出会怎样。
 
@@ -400,7 +402,7 @@ MVP 之后的扩展候选：多模型路由、TUI、子 Agent、首个 release�
 | --- | --- | --- | --- |
 | P0 | `uv run lime-star --version`；`npm run verify:local -- --full` | Gate B | 通过（2026-11-24）：本地 8 个任务通过，CI 跑通一次 |
 | P1 | `lime-star` 真实对话；密钥守卫脚本 | Live + Gate B | 通过（2026-11-24）：真实模型连续三轮，第三轮答出第一轮说的名字；请求日志三条 ok，没有内容和密钥；密钥守卫通过 |
-| P2 | `uv run pytest tests/unit -q` | Unit + 入口集成 | 未跑 |
+| P2 | `uv run pytest tests/unit -q` | Unit + 入口集成 | 通过（2026-11-24）：单元测试 89 条，运行前禁用全部 socket；入口集成 30 条、Gate B 回归 35 条，模型都是测试替身；门禁 11 个任务通过。不含 Live。CI 没有跑 |
 | P3 | `npm run test:contracts`；夹具驱动的集成测试 | Current fixture + Gate A | 未跑 |
 | P4 | `uv run python scripts/smoke/agent_gate_b.py` | Gate B | 未跑 |
 | P5 | `lime-star --resume`；冒烟脚本 | Gate B | 未跑 |
@@ -432,6 +434,18 @@ MVP 之后的扩展候选：多模型路由、TUI、子 Agent、首个 release�
 - 完成度：P1 100%。路线图 29%，P0、P1 完成，P2 到 P7 未开始。
 - 下一刀：按 P2 的开工话术开始 P2。开工前先定一件事：P1 实测取消一个回合之后，模型会把被取消的那条消息一起回答；要不要把回合结局告诉模型，这决定 P2、P3 怎么设计模型可见的历史。技术债 CCD-002、CCD-003 在 P2 开工前补。
 
+### 2026-11-24 P2 loop-core 交付
+
+- 改动：protocol（项、回合结局、三个边界接口）、agent_runtime 的 run_turn（只依赖 protocol 的纯核心，四种结局）、tool_runtime 的注册表、参数校验和 read_file、model_provider 的 respond、app 的装配。两条架构守卫：导入不越过依赖矩阵，Owner 章节带已签署的确认块；verify-local 新增 architecture 任务，共 11 个。architecture.md 第 4 节的依赖矩阵与 Owner 章节 7.1。正式命令在这一阶段的可见行为与 P1 相同。细节见 `../exec-plans/p2-loop-core-plan.md`。
+- 验证：五条退出条件逐条满足。单元测试 89 条，运行前禁用全部 socket，其中循环的 12 条只用 0.05 秒；入口集成 30 条（模型为测试替身）；Gate B 回归 35 条（真实进程，模型为测试替身）。npm run verify:local -- --full 的 11 个任务通过，195 条通过、2 条跳过（Live）。P2 不含 Live 证据。架构确认块已由仓库所有者签署。CI 没有跑：提交 2cc4cbe 还没有推送。
+- 完成度：P2 95%，还差 CI。路线图 42%。
+- 下一刀：P3 已开工。P2 的计划等 CI 通过后关闭。
+
+### 2026-11-24（路线图调整）
+
+- 仓库所有者说“read_file提到p3，开始P3”：read_file 在 P3 进入正式命令，路径边界 R8.1 到 R8.3 随之提前，但只约束 read_file。P3、P4 的目标、交付需求、落地的规则和验收动作据此改了。P4 仍然交付 list_dir 与 write_file，并让它们受同一边界约束。
+- P2 计划里另一件待定的事（取消的回合要不要让模型知道）仓库所有者没有答复，P3 保持现状。
+
 ## 当前结论
 
-完成度: 29%（P0、P1 已完成；P2 到 P7 未开始）
+完成度: 42%（P0、P1 完成；P2 已交付，还差 CI；P3 进行中；P4 到 P7 未开始）

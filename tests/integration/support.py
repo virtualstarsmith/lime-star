@@ -6,7 +6,7 @@ import os
 import subprocess
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +14,7 @@ import httpx2
 import pytest
 from openai import OpenAI
 
+from lime_star.protocol import Entry, Item, TurnEnd
 from tests.integration.fake_model import FAKE_KEY, FakeModel
 
 PROMPT = "你> "
@@ -205,3 +206,42 @@ class CliProcess:
         for pipe in (self.process.stdin, self.process.stdout, self.process.stderr):
             if pipe is not None:
                 pipe.close()
+
+
+def written(entries: Sequence[Entry]) -> tuple[Item, ...]:
+    """会话记录里的项，不带信封，按写入顺序。"""
+    return tuple(entry.item for entry in entries)
+
+
+def kinds(entries: Sequence[Entry]) -> list[str]:
+    """会话记录里各项的类型名，按写入顺序。"""
+    return [entry.item.kind for entry in entries]
+
+
+def endings(entries: Sequence[Entry]) -> list[TurnEnd]:
+    """会话记录里各个回合的结局项，按写入顺序。"""
+    return [entry.item for entry in entries if isinstance(entry.item, TurnEnd)]
+
+
+def transcript_file(workdir: Path) -> Path:
+    """工作目录里那一份会话记录。这里的工作目录只开过一个会话，所以它只有一个文件。"""
+    files = sorted((workdir / ".lime-star" / "threads").glob("*.jsonl"))
+    assert len(files) == 1, f"场景：工作目录里应当只有一份会话记录，实际有 {len(files)} 份"
+    return files[0]
+
+
+def kill_tree(process: subprocess.Popen[bytes]) -> None:
+    """强制结束一个进程，连同它的子进程，不给它收尾的机会。
+
+    Windows 上 lime-star 命令是一个启动器，会话进程是它的子进程，所以要结束整棵进程树。
+    """
+    if os.name == "nt":
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            capture_output=True,
+            check=False,
+            timeout=30,
+        )
+    else:
+        process.kill()
+    process.wait(timeout=10)

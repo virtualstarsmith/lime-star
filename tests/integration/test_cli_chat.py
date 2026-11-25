@@ -3,7 +3,8 @@
 证据等级：入口集成（CLI 的交互循环这一层，不经过真实进程）。真实进程的用例在
 test_cli_process.py。Ctrl+C 用 _thread.interrupt_main() 模拟：它和真实 Ctrl+C 一样
 在主线程里挂起一个中断，但不经过控制台。模型是测试替身。
-覆盖 R13.1-S1、R13.3-S1、R13.4-S1、R13.9-S1、R13.11-S1、R13.12-S1、R13.13-S1。
+覆盖 R13.1-S1、R13.3-S1、R13.4-S1、R13.9-S1、R13.11-S1、R13.12-S1、R13.13-S1；
+路线图 P3 加入 R13.14-S1、R13.14-S2、R13.15-S1（工具调用和结果摘要的显示）。
 """
 
 import io
@@ -19,7 +20,7 @@ from lime_star import __version__
 from lime_star.app import Outcome, Session
 from lime_star.cli.chat import PROMPT, InputError, StdinLines, chat
 from tests.integration.fake_model import FAKE_KEY, FakeModel, Hold
-from tests.integration.support import wait_until
+from tests.integration.support import endings, wait_until
 
 BLANK_LINES = 3
 
@@ -174,7 +175,7 @@ def test_ctrl_c_during_a_turn_cancels_it_and_returns_to_the_prompt(
     code = chat(session, lines, out, err, tmp_path)
     assert (code, err.getvalue()) == (0, "")
     assert out.getvalue() == banner(tmp_path) + PROMPT + "已取消。\n" + PROMPT
-    assert session.read_thread().turns[0].outcome is Outcome.CANCELLED
+    assert endings(session.read_thread())[0].outcome is Outcome.CANCELLED
 
 
 def test_session_goes_on_after_a_cancelled_turn(
@@ -255,3 +256,49 @@ def test_stdin_lines_reports_a_broken_stream() -> None:
     lines.start()
     with pytest.raises(InputError):
         lines.next_line()
+
+
+def test_a_tool_call_and_its_result_are_shown_as_they_are_recorded(
+    make_session: Any, fake_model: FakeModel, tmp_path: Path
+) -> None:
+    """R13.14-S1、R13.14-S2、R13.15-S1：模型文本产出后显示；工具调用显示名称和目标；结果显示一行摘要。"""
+    (tmp_path / "notes.txt").write_text("甲\n乙\n", encoding="utf-8")
+    fake_model.call(("read_file", {"path": "notes.txt"}), text="我先看看")
+    fake_model.reply("有两行")
+    lines = ScriptedLines()
+    lines.feed("notes.txt 有几行")
+    lines.feed("/exit")
+    out, err = io.StringIO(), io.StringIO()
+    code = chat(make_session(), lines, out, err, tmp_path)
+    assert (code, err.getvalue()) == (0, "")
+    assert out.getvalue() == (
+        banner(tmp_path)
+        + PROMPT
+        + "我先看看\n"
+        + '调用 read_file {"path": "notes.txt"}\n'
+        + "结果：读到 2 行\n"
+        + "有两行\n"
+        + PROMPT
+    )
+
+
+def test_a_failed_tool_result_is_shown_with_its_error(
+    make_session: Any, fake_model: FakeModel, tmp_path: Path
+) -> None:
+    """R13.15-S1 的另一半：工具出错时，终端上有一行说明出了什么错。"""
+    fake_model.call(("read_file", {"path": "nope.txt"}))
+    fake_model.reply("没有这个文件")
+    lines = ScriptedLines()
+    lines.feed("读一下 nope.txt")
+    lines.feed("/exit")
+    out, err = io.StringIO(), io.StringIO()
+    code = chat(make_session(), lines, out, err, tmp_path)
+    assert (code, err.getvalue()) == (0, "")
+    assert out.getvalue() == (
+        banner(tmp_path)
+        + PROMPT
+        + '调用 read_file {"path": "nope.txt"}\n'
+        + "结果出错：文件不存在：nope.txt。\n"
+        + "没有这个文件\n"
+        + PROMPT
+    )

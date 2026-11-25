@@ -14,14 +14,9 @@ from lime_star.model_provider.config import (
     load_config,
 )
 from lime_star.model_provider.errors import ErrorKind, Failure, classify
-from lime_star.model_provider.provider import (
-    Clock,
-    NewId,
-    Provider,
-    new_id,
-    utc_now,
-)
+from lime_star.model_provider.provider import Provider, new_id, utc_now
 from lime_star.model_provider.request_log import RequestLog
+from lime_star.protocol import Clock, NewId
 
 __all__ = [
     "API_KEY_VAR",

@@ -28,8 +28,8 @@
 | `src/lime_star/protocol/` | 协议类型 | Thread、Turn、Item 的类型与事件形状 | 运行时逻辑、I/O | 已有 |
 | `src/lime_star/agent_runtime/` | 回合循环 | 循环状态机与回合编排 | provider wire 细节、工具执行、终端输出 | 已有 |
 | `src/lime_star/tool_runtime/` | 工具边界 | 工具注册、参数校验、路径边界、危险等级、执行 | 终端交互、provider 请求 | 已有 |
-| `src/lime_star/thread_store/` | 持久化 | transcript 追加写入、读取与读模型 | 临时界面状态、第二份会话真相 | 路线图 P3 |
-| `protocol/` | 契约 schema | Thread、Turn、Item 的 JSON Schema | 实现代码 | 路线图 P3 |
+| `src/lime_star/thread_store/` | 持久化 | transcript 追加写入、读取与读模型 | 临时界面状态、第二份会话真相 | 已有 |
+| `protocol/` | 契约 schema | Thread、Turn、Item 的 JSON Schema | 实现代码 | 已有 |
 | `tests/` | 测试 | unit、integration、fixtures | 生产代码、真实凭证 | 已有 |
 | `pyproject.toml`、`uv.lock`、`.python-version` | 依赖与工具链 | 依赖声明与锁定、检查工具配置 | 业务逻辑 | 已有 |
 | `.lime-star/` | 运行时产物 | transcript、请求日志、证据导出；不入库 | 需要长期保留的样本（应提升到 tests/fixtures/） | 已有 |
@@ -127,7 +127,7 @@ Responsible developer confirmation: <姓名/代号>, <日期>
   3. 一步一物化：一次模型响应先落成项（推理、文本、工具调用）并写进记录，再执行其中的工具调用；一次响应里的工具全部执行完、结果都写回之后，才发起下一次请求。
   4. 一个回合最多 20 次模型请求（需求决策 D-10）。第 20 次响应仍调用工具时，一个工具也不执行，回合以步数上限结束。
   5. 模型请求失败结束回合，不重试；工具出错、未知工具、参数不合法都作为工具结果交回模型，回合继续。
-  6. P2 的正式命令不向模型提供任何工具，注册表为空，请求与 P1 相同。read_file 只经 `open_session` 的 `tools` 参数注册，用在入口集成测试里。
+  6. 正式命令的工具集由 tool_runtime 的 default_tools 给出，测试可以经 `open_session` 的 `tools` 参数换上自己的工具集。P2 时它是空的，请求与 P1 相同；P3 起含 read_file，见 7.2。
 - 相关协议：项（UserMessage、ModelText、Reasoning、ToolCall、ToolResult）、Outcome（done、error、cancelled、step_limit）、ModelResult（ModelReply 或 ModelFailure）。项的 JSON Schema 契约随 P3 登记。
 - 退出条件：回合循环被另一个 owner 取代时，删除 `src/lime_star/agent_runtime/`，在第 4 节登记 `run_turn` 为 dead / deleted / forbidden-to-restore，并把依赖矩阵里的这一行删掉。
 
@@ -136,4 +136,29 @@ Architecture impact: major
 架构图已更新：architecture.md 第 2 节目录地图（protocol、agent_runtime、tool_runtime 三行的状态列）、第 4 节的依赖矩阵、本节 7.1
 Responsible developer confirmation: 仓库所有者，2026-11-24
 确认内容：本阶段新增 protocol、agent_runtime、tool_runtime 三个 owner，回合入口第一次把回合交给循环，模型请求第一次能带上工具定义并取回工具调用。循环是只依赖 protocol 的纯核心，外界只经模型、工具集、会话记录三个接口进来。正式命令在这一阶段不向模型提供工具，可见行为与 P1 相同。替代方案：让循环直接依赖模型边界和注册表，被第 4 节的依赖方向禁止，守卫会拦；现在就把 read_file 挂到正式命令上，显示、会话记录和路径边界都还没有交付。回滚策略：删除三个新目录，Session.start_turn 回到只发一次请求，Provider 回到只取出回复文本；会话记录一直在内存里，磁盘上没有需要回滚的东西。
+```
+
+### 7.2 会话记录事实源
+
+落地于路线图 P3（2026-11-24）。阶段计划见 `../exec-plans/p3-transcript-plan.md`。
+
+- 主链：app 回合入口 `start_turn` -> agent_runtime 的循环 -> thread_store 把每一项追加进会话记录并落盘 -> 终端显示与 read_thread 只从这份记录派生。
+- owner：`src/lime_star/thread_store/` 是会话记录（transcript）的唯一 current owner；仓库根的 `protocol/` 是会话记录一行这个契约的 owner，第一条契约是 thread-items。
+- 边界：
+  1. 一个会话只有一份记录：工作目录下 .lime-star/threads/<thread_id>.jsonl，JSON Lines，只追加（决策 D-23、D-29）。不在内存里保留第二份：app 在每个回合开始时从文件读出历史。
+  2. 每一行是带信封的一项：序号、时间、会话标识、回合标识，加上项的类型和载荷。八类项见契约 thread-items；改类型、改编码、改 schema 三者要一起改，并重新登记契约。
+  3. 每项写入后 flush 并 fsync，然后才继续处理。读回时，末尾没有换行的残行不算一项；看不懂的行直接报错，不悄悄丢掉。
+  4. 循环经 protocol 里的 Journal 接口写记录。循环不导入 thread_store；app 负责把接口接上，并在每一项落盘后把它交给显示回调。
+  5. 终端显示是记录的投影：`src/lime_star/cli/chat.py` 的 project 只看传进来的项，不留状态。回合怎样收场（完成、取消、步数上限、出错）也由回合结局项驱动显示。
+  6. 记录里每次工具调用都有且只有一条结果。没有执行的调用由循环补一条出错的结果：取消时被中断的调用和它后面的调用，达到步数上限时最后一次响应里的调用。
+  7. 模型可见的历史由会话记录的项转换而来，转换只在 model_provider 的 _messages 一处。回合结局项目前不上线路。
+  8. 请求日志凭 thread_id 和 turn_id 与会话记录关联（R3.4）。两个标识由 app 在打开会话时生成，两边共用。
+- 相关协议：契约 thread-items，schema 是 `protocol/thread-items.schema.json`，消费者是 protocol 的项类型、thread_store 的编码和契约用例。录制的模型响应放在 tests/fixtures/provider/ 下，只供测试回放；产品代码没有回放开关（R11.6）。
+- 退出条件：会话记录能力被另一个 owner 取代时，删除 `src/lime_star/thread_store/`，在第 4 节登记 Transcript、encode、decode 为 dead / deleted / forbidden-to-restore，把依赖矩阵里的这一行删掉，并移除契约 thread-items。
+
+```text
+Architecture impact: major
+架构图已更新：architecture.md 第 2 节目录地图（thread_store、protocol 两行的状态列）、本节 7.2
+Responsible developer confirmation: 仓库所有者，2026-11-25
+确认内容：本阶段新增 thread_store 和契约目录两个 owner，第一次把会话记录持久化到磁盘，并让终端显示只从它派生。正式命令第一次向模型提供工具：read_file，带工作目录边界。替代方案：让显示直接吃循环发出的事件而不落盘，那样显示会成为第二份会话真相，回放和证据也无从派生；把回放做成产品命令的开关，被 R11.6 禁止，所以回放只经测试注入的 HTTP 传输。回滚策略：删除 thread_store 和仓库根的 protocol 目录，取消契约登记；Session 回到 P2 的内存记录，cli 回到按回合结局显示；默认工具集回到空。已经在工作目录 .lime-star/threads 下写出的记录文件不需要迁移，回滚后没有代码读它们。
 ```

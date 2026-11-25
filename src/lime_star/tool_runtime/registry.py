@@ -1,7 +1,7 @@
 """工具注册表：按名称注册与查找工具，校验参数，执行调用。
 
 一次调用总是得到一条结果：未知工具、参数不合法、工具运行时出错，都作为出错的结果交回，
-由回合循环继续交给模型（R12.2）。
+由回合循环继续交给模型（R12.2）。结果带一行摘要，随结果项写进会话记录，只用于终端显示。
 """
 
 import json
@@ -14,10 +14,15 @@ from lime_star.tool_runtime.schema import problem
 
 @dataclass(frozen=True)
 class ToolOutput:
-    """工具的一次输出。出错时 error 为真，text 是给模型看的原因。"""
+    """工具的一次输出。
+
+    text 是交给模型的内容；出错时 error 为真，text 是给模型看的原因。
+    summary 是给终端看的一行摘要（R13.15），不交给模型；留空时取 text 的第一行。
+    """
 
     text: str
     error: bool = False
+    summary: str = ""
 
 
 @dataclass(frozen=True)
@@ -60,17 +65,27 @@ class Registry:
         """执行一次调用，总是返回一条结果。"""
         tool = self.find(call.name)
         if tool is None:
-            return ToolResult(call.call_id, f"没有名为 {call.name} 的工具。", error=True)
+            return _failed(call.call_id, f"没有名为 {call.name} 的工具。")
         try:
             arguments = _arguments(call.arguments, tool.parameters)
         except BadArguments as exc:
-            return ToolResult(call.call_id, str(exc), error=True)
+            return _failed(call.call_id, str(exc))
         try:
             output = tool.run(arguments)
         except Exception as exc:
             # 只写异常类名：异常文本可能带着不该交给模型的内容。
-            return ToolResult(call.call_id, f"工具运行出错（{type(exc).__name__}）。", error=True)
-        return ToolResult(call.call_id, output.text, output.error)
+            return _failed(call.call_id, f"工具运行出错（{type(exc).__name__}）。")
+        return ToolResult(
+            call.call_id,
+            output.text,
+            output.error,
+            output.summary or output.text.split("\n")[0],
+        )
+
+
+def _failed(call_id: str, reason: str) -> ToolResult:
+    """出错的工具结果：同一句说明既交给模型，也作为给终端看的摘要。"""
+    return ToolResult(call_id, reason, error=True, summary=reason)
 
 
 def _arguments(raw: str, schema: Mapping[str, Json]) -> Mapping[str, Json]:

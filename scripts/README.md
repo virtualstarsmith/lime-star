@@ -49,7 +49,7 @@ node scripts/verify-local.mjs --dry-run
 
 ## 契约清单格式
 
-`governance/contracts.json` 的格式示例（lime-star 的第一条真实契约由路线图 P3 登记）：
+`governance/contracts.json` 的格式示例（lime-star 的第一条真实契约 thread-items 已于路线图 P3 登记）：
 
 ```json
 {

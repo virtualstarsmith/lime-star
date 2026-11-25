@@ -1,6 +1,8 @@
 """真实进程里的 lime-star 命令。
 
 P0 的用例覆盖 R1.1 到 R1.3。P1 的用例通过管道驱动一个真实的会话进程。
+发下一行之前等的是输入提示，不是回复文本：回复在它写进会话记录时就显示，
+从回复出现到回合返回之间到达的输入按 R13.8 被丢弃。
 证据等级：Gate B，真实进程、真实输入、贯穿主链的可见输出。模型是测试替身
 （本地替身服务，脚本化响应，没有从真实运行录制），不是真实模型。
 覆盖 R3.1、R3.2-S1、R4.1-S1、R4.2-S1、R4.3-S1、R4.3-S2、R13.1-S1、R13.2-S1、
@@ -8,6 +10,7 @@ R13.3-S1、R13.4-S1、R13.5、R13.6-S1、R13.7-S1、R13.8-S1、R13.9-S1、R13.10
 路线图 P2 加入 R12.3：达到步数上限时的终端说明。
 """
 
+import json
 import socket
 import subprocess
 from collections.abc import Callable
@@ -95,6 +98,7 @@ def test_message_goes_to_the_configured_model_and_reply_is_shown(
     process.wait_for("stdout", PROMPT)
     process.send("你好")
     process.wait_for("stdout", "你好，我是替身模型。\n")
+    process.wait_for("stdout", PROMPT, count=2)
     process.send("/exit")
     assert process.finish() == 0
     [request] = fake_model.requests()
@@ -162,6 +166,7 @@ def test_env_file_in_the_workdir_supplies_the_config(
     process.wait_for("stdout", PROMPT)
     process.send("你好")
     process.wait_for("stdout", "来自 .env 的配置也能用。\n")
+    process.wait_for("stdout", PROMPT, count=2)
     process.send("/exit")
     assert process.finish() == 0
     [request] = fake_model.requests()
@@ -187,6 +192,7 @@ def test_key_stays_out_of_terminal_and_log_even_if_the_api_echoes_it(
     process.wait_for("stdout", PROMPT, count=2)
     process.send("第二问")
     process.wait_for("stdout", "第二次成功。\n")
+    process.wait_for("stdout", PROMPT, count=3)
     process.send("/exit")
     assert process.finish() == 0
     assert process.output("stderr") == "回合出错：鉴权失败（HTTP 401）。\n"
@@ -215,8 +221,10 @@ def test_input_during_a_turn_is_dropped_and_reported(
     hold.release()
     process.wait_for("stdout", "第一答\n")
     process.wait_for("stderr", "已忽略 2 行回合中收到的输入。\n")
+    process.wait_for("stdout", PROMPT, count=2)
     process.send("第二问")
     process.wait_for("stdout", "第二答\n")
+    process.wait_for("stdout", PROMPT, count=3)
     process.send("/exit")
     assert process.finish() == 0
     [first, second] = fake_model.requests()
@@ -241,6 +249,7 @@ def test_blank_lines_do_not_start_a_turn(
     process.wait_for("stdout", PROMPT, count=3)
     process.send("问")
     process.wait_for("stdout", "答\n")
+    process.wait_for("stdout", PROMPT, count=4)
     process.send("/exit")
     assert process.finish() == 0
     assert len(fake_model.requests()) == 1
@@ -300,8 +309,10 @@ def test_request_log_of_a_real_session_has_one_record_per_request(
     process.wait_for("stdout", PROMPT)
     process.send(f"第一问 {marker}")
     process.wait_for("stdout", "第一答\n")
+    process.wait_for("stdout", PROMPT, count=2)
     process.send("第二问")
     process.wait_for("stdout", "第二答\n")
+    process.wait_for("stdout", PROMPT, count=3)
     process.send("/exit")
     assert process.finish() == 0
     records = read_log(log_path)
@@ -339,7 +350,46 @@ def test_step_limit_is_reported_on_the_terminal(
     process.send("/exit")
     assert process.finish() == 0
     assert process.output("stderr") == ""
+    assert process.output("stdout").count("调用 no_such_tool {}") == 20
+    assert process.output("stdout").count("结果出错：没有名为 no_such_tool 的工具。") == 19
+    assert process.output("stdout").count("结果出错：没有执行：回合已达到步数上限。") == 1
     records = read_log(log_path)
     assert [record["status"] for record in records] == ["ok"] * 20
     assert len({record["turn_id"] for record in records}) == 1
     assert len({record["request_id"] for record in records}) == 20
+
+
+def test_a_tool_call_is_shown_in_a_real_process(
+    start_cli: Callable[..., CliProcess],
+    model_env: dict[str, str],
+    fake_model: FakeModel,
+    tmp_path: Path,
+) -> None:
+    """R13.14-S1、R13.15-S1、R6.1-S1：真实进程里依次出现工具调用、结果摘要和最终回复。
+
+    会话记录文件里的顺序与此一致。
+    """
+    (tmp_path / "notes.txt").write_text("甲\n乙\n", encoding="utf-8")
+    fake_model.call(("read_file", {"path": "notes.txt"}))
+    fake_model.reply("有两行")
+    process = start_cli(model_env)
+    process.wait_for("stdout", PROMPT)
+    process.send("notes.txt 有几行")
+    process.wait_for("stdout", "有两行\n")
+    process.wait_for("stdout", PROMPT, count=2)
+    process.send("/exit")
+    assert process.finish() == 0
+    assert process.output("stderr") == ""
+    assert process.output("stdout").split(PROMPT)[1] == (
+        '调用 read_file {"path": "notes.txt"}\n结果：读到 2 行\n有两行\n'
+    )
+    [file] = (tmp_path / ".lime-star" / "threads").glob("*.jsonl")
+    types = [json.loads(line)["type"] for line in file.read_bytes().split(b"\n")[:-1]]
+    assert types == [
+        "turn_start",
+        "user_message",
+        "tool_call",
+        "tool_result",
+        "model_text",
+        "turn_end",
+    ]

@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "protocol/thread-items.schema.json",
+  "title": "会话记录的一行",
+  "description": "lime-star 的会话记录是一个 JSON Lines 文件，一个会话一个，放在 .lime-star/threads/<thread_id>.jsonl。每一行是带信封的一项：信封说明它是这个会话的第几项、何时写入、属于哪个会话和哪个回合；type 说明它是哪一类项，后面的字段是这一类项自己的载荷。类型由 src/lime_star/protocol/items.py 定义，写入和读回由 src/lime_star/thread_store/transcript.py 负责。改任何一方都要同步另外两方，并运行 node scripts/check-contracts.mjs --update 重新登记。",
+  "type": "object",
+  "required": ["seq", "time", "thread_id", "turn_id", "type"],
+  "properties": {
+    "seq": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "序号：这个会话里的第几项，从 1 起，按写入顺序递增。"
+    },
+    "time": {
+      "type": "string",
+      "format": "date-time",
+      "description": "写入时间，ISO 8601，带时区。"
+    },
+    "thread_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "会话标识：与请求日志里的 thread_id 相同。"
+    },
+    "turn_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "回合标识：与请求日志里的 turn_id 相同。"
+    },
+    "type": {
+      "enum": [
+        "user_message",
+        "model_text",
+        "reasoning",
+        "tool_call",
+        "tool_result",
+        "approval",
+        "turn_start",
+        "turn_end"
+      ],
+      "description": "项的类型。"
+    }
+  },
+  "unevaluatedProperties": false,
+  "oneOf": [
+    { "$ref": "#/$defs/user_message" },
+    { "$ref": "#/$defs/model_text" },
+    { "$ref": "#/$defs/reasoning" },
+    { "$ref": "#/$defs/tool_call" },
+    { "$ref": "#/$defs/tool_result" },
+    { "$ref": "#/$defs/approval" },
+    { "$ref": "#/$defs/turn_start" },
+    { "$ref": "#/$defs/turn_end" }
+  ],
+  "$defs": {
+    "user_message": {
+      "description": "用户提交的一条消息。",
+      "properties": {
+        "type": { "const": "user_message" },
+        "content": { "type": "string", "description": "消息正文。" }
+      },
+      "required": ["content"]
+    },
+    "model_text": {
+      "description": "模型产出的一段文本。",
+      "properties": {
+        "type": { "const": "model_text" },
+        "content": { "type": "string", "description": "文本正文。" }
+      },
+      "required": ["content"]
+    },
+    "reasoning": {
+      "description": "模型产出的一段推理。",
+      "properties": {
+        "type": { "const": "reasoning" },
+        "content": { "type": "string", "description": "推理正文。" }
+      },
+      "required": ["content"]
+    },
+    "tool_call": {
+      "description": "模型请求的一次工具调用。",
+      "properties": {
+        "type": { "const": "tool_call" },
+        "call_id": { "type": "string", "description": "调用的编号，与它的结果里的 call_id 相同。" },
+        "name": { "type": "string", "description": "工具名。" },
+        "arguments": { "type": "string", "description": "模型给出的参数，原样的 JSON 文本，不改写。" }
+      },
+      "required": ["call_id", "name", "arguments"]
+    },
+    "tool_result": {
+      "description": "一次工具调用的结果。出错的结果也是结果，照样交给模型。",
+      "properties": {
+        "type": { "const": "tool_result" },
+        "call_id": { "type": "string", "description": "对应的调用编号。" },
+        "content": { "type": "string", "description": "交给模型的内容。" },
+        "error": { "type": "boolean", "description": "这次调用是否出错。" },
+        "summary": { "type": "string", "description": "给终端看的一行摘要，不交给模型。" }
+      },
+      "required": ["call_id", "content", "error", "summary"]
+    },
+    "approval": {
+      "description": "用户对一次危险操作的回应。写出它的流程随路线图 P4 加入。",
+      "properties": {
+        "type": { "const": "approval" },
+        "call_id": { "type": "string" },
+        "name": { "type": "string" },
+        "arguments": { "type": "string" },
+        "decision": { "enum": ["approved", "rejected"] }
+      },
+      "required": ["call_id", "name", "arguments", "decision"]
+    },
+    "turn_start": {
+      "description": "一个回合的开始。",
+      "properties": {
+        "type": { "const": "turn_start" }
+      },
+      "required": []
+    },
+    "turn_end": {
+      "description": "一个回合的结局和原因。完成时原因为空串。",
+      "properties": {
+        "type": { "const": "turn_end" },
+        "outcome": { "enum": ["done", "error", "cancelled", "step_limit"] },
+        "reason": { "type": "string" }
+      },
+      "required": ["outcome", "reason"]
+    }
+  }
+}

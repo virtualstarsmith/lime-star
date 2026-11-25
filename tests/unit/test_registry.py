@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from lime_star.protocol import Json, ToolCall, ToolResult
-from lime_star.tool_runtime import Registry, Tool, ToolOutput, read_file
+from lime_star.tool_runtime import Registry, Tool, ToolOutput, default_tools, read_file
 
 SCHEMA: dict[str, Json] = {
     "type": "object",
@@ -25,6 +25,11 @@ def echo(arguments: Mapping[str, Json]) -> ToolOutput:
 
 def call(name: str, arguments: str = '{"path": "a.txt"}', call_id: str = "c1") -> ToolCall:
     return ToolCall(call_id=call_id, name=name, arguments=arguments)
+
+
+def failed(reason: str) -> ToolResult:
+    """出错的工具结果：同一句说明既交给模型，也是给终端看的摘要。"""
+    return ToolResult("c1", reason, error=True, summary=reason)
 
 
 def test_a_tool_is_registered_by_name_and_found() -> None:
@@ -53,9 +58,7 @@ def test_a_duplicate_name_is_rejected() -> None:
 
 
 def test_an_unknown_tool_is_an_error_result() -> None:
-    assert Registry().execute(call("nope")) == ToolResult(
-        "c1", "没有名为 nope 的工具。", error=True
-    )
+    assert Registry().execute(call("nope")) == failed("没有名为 nope 的工具。")
 
 
 @pytest.mark.parametrize(
@@ -79,14 +82,14 @@ def test_bad_arguments_never_reach_the_tool(arguments: str, content: str) -> Non
         return ToolOutput("不该走到这里")
 
     registry = Registry([Tool("echo", "", SCHEMA, spy)])
-    assert registry.execute(call("echo", arguments)) == ToolResult("c1", content, error=True)
+    assert registry.execute(call("echo", arguments)) == failed(content)
     assert calls == []
 
 
 def test_valid_arguments_reach_the_tool() -> None:
     registry = Registry([Tool("echo", "", SCHEMA, echo)])
     result = registry.execute(call("echo", '{"path": "a.txt", "count": 2, "extra": "随它"}'))
-    assert result == ToolResult("c1", "读到 'a.txt'")
+    assert result == ToolResult("c1", "读到 'a.txt'", summary="读到 'a.txt'")
 
 
 def test_nested_values_are_checked_against_items() -> None:
@@ -97,9 +100,7 @@ def test_nested_values_are_checked_against_items() -> None:
     }
     registry = Registry([Tool("echo", "", schema, echo)])
     result = registry.execute(call("echo", '{"paths": ["a", 2]}'))
-    assert result == ToolResult(
-        "c1", "参数 paths 的第 2 项：应当是字符串，实际是整数。", error=True
-    )
+    assert result == failed("参数 paths 的第 2 项：应当是字符串，实际是整数。")
 
 
 def test_a_tool_that_raises_gives_an_error_result_naming_only_the_exception() -> None:
@@ -110,7 +111,7 @@ def test_a_tool_that_raises_gives_an_error_result_naming_only_the_exception() ->
 
     registry = Registry([Tool("boom", "", SCHEMA, boom)])
     result = registry.execute(call("boom"))
-    assert result == ToolResult("c1", "工具运行出错（RuntimeError）。", error=True)
+    assert result == failed("工具运行出错（RuntimeError）。")
 
 
 def test_an_error_output_keeps_its_error_flag() -> None:
@@ -118,7 +119,7 @@ def test_an_error_output_keeps_its_error_flag() -> None:
         return ToolOutput("被拒绝。", error=True)
 
     registry = Registry([Tool("refuse", "", SCHEMA, refuse)])
-    assert registry.execute(call("refuse")) == ToolResult("c1", "被拒绝。", error=True)
+    assert registry.execute(call("refuse")) == ToolResult("c1", "被拒绝。", True, "被拒绝。")
 
 
 def test_read_file_is_offered_with_name_description_and_schema(tmp_path: Path) -> None:
@@ -137,3 +138,24 @@ def test_read_file_is_offered_with_name_description_and_schema(tmp_path: Path) -
     assert "2000 行" in spec.description
     assert callable(tool.run)
     assert json.dumps(spec.parameters)  # 参数模式必须是能原样发给接口的 JSON
+
+
+def test_a_summary_is_kept_or_taken_from_the_first_line() -> None:
+    """R13.15 的依据：工具给出的摘要原样保留，没给时取内容的第一行；摘要不进交给模型的内容。"""
+
+    def brief(_arguments: Mapping[str, Json]) -> ToolOutput:
+        return ToolOutput("第一行\n第二行", summary="一共两行")
+
+    def plain(_arguments: Mapping[str, Json]) -> ToolOutput:
+        return ToolOutput("第一行\n第二行")
+
+    registry = Registry([Tool("brief", "", SCHEMA, brief), Tool("plain", "", SCHEMA, plain)])
+    brief_result = registry.execute(call("brief"))
+    assert (brief_result.content, brief_result.summary) == ("第一行\n第二行", "一共两行")
+    assert registry.execute(call("plain")).summary == "第一行"
+
+
+def test_the_default_tools_register_read_file(tmp_path: Path) -> None:
+    """正式命令的工具集：路线图 P3 只有 read_file。"""
+    [spec] = default_tools(tmp_path).specs()
+    assert spec.name == "read_file"

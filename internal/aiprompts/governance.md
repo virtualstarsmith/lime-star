@@ -44,6 +44,7 @@
 | 文档交叉引用 | `node scripts/check-doc-links.mjs` |
 | 依赖方向与禁止旁路（architecture.md 第 4 节的依赖矩阵，模型客户端 SDK 只在 model_provider） | verify-local 的 architecture 任务：`tests/integration/test_guard_architecture.py` |
 | 重大架构变更的确认块（architecture.md 第 7 节的每个 Owner 章节） | verify-local 的 architecture 任务：`tests/integration/test_guard_architecture.py` |
+| 第二份会话真相（显示、导出、测试只能从 thread_store 的会话记录派生） | Gate A 测试：`tests/integration/test_transcript.py` 里 read_thread 的结果与文件逐项一致的用例 |
 | 全部聚合 | `npm run verify:local` |
 | 旧路径回流 / dead 残留 | 尚无退役对象。首次退役时在 architecture.md 第 4 节登记，并在该阶段的计划里补负向守卫 |
 

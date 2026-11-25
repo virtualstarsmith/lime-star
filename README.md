@@ -20,7 +20,11 @@ cp .env.example .env   # 填入 OpenAI 兼容接口的地址、密钥和模型�
 uv run lime-star
 ```
 
-每次模型请求在工作目录的 `.lime-star/logs/requests.jsonl` 里追加一行，只记时间、标识、状态、耗时和 token 用量。输入 `/exit` 退出。
+每次模型请求在工作目录的 `.lime-star/logs/requests.jsonl` 里追加一行，只记时间、标识、状态、耗时和 token 用量。
+
+每个会话有一份会话记录，是工作目录下 `.lime-star/threads/` 里的一个 JSON Lines 文件。用户消息、模型的回复、每次工具调用和它的结果、回合的开始与结局，都按发生顺序写在里面；终端上看到的每一行都来自它。
+
+路线图 P3 起，它可以读取工作目录里的 UTF-8 文本文件；工作目录之外的路径会被拒绝。它还不能写文件或执行命令。输入 `/exit` 退出。
 
 ## 本地门禁
 

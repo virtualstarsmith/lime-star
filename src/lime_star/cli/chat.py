@@ -1,4 +1,8 @@
-"""会话的终端交互：横幅、输入提示、显示回复、Ctrl+C 与输入结束（需求 R13）。"""
+"""会话的终端交互：横幅、输入提示、把会话记录投影到终端、Ctrl+C 与输入结束（需求 R13）。
+
+终端上关于一个回合的每一行都来自会话记录：一项落盘后，project 把它显示出来。这里不留状态，
+也不自己拼第二份会话真相。
+"""
 
 import queue
 import threading
@@ -7,7 +11,19 @@ from pathlib import Path
 from typing import Protocol, TextIO, assert_never
 
 from lime_star import __version__
-from lime_star.app import Outcome, Session, TurnResult
+from lime_star.app import Session
+from lime_star.protocol import (
+    Approval,
+    Entry,
+    ModelText,
+    Outcome,
+    Reasoning,
+    ToolCall,
+    ToolResult,
+    TurnEnd,
+    TurnStart,
+    UserMessage,
+)
 
 EXIT_OK = 0
 EXIT_RUNTIME = 1
@@ -132,29 +148,49 @@ def chat(session: Session, lines: LineSource, out: TextIO, err: TextIO, workdir:
         if text == EXIT_COMMAND:
             return EXIT_OK  # R13.4
         try:
-            result = session.start_turn(text)
+            session.start_turn(text, show=lambda entry: project(entry, out, err))
         except KeyboardInterrupt:
             continue  # 兜底：回合里的中断已经处理，回到输入提示（R13.11）
-        _show(result, out, err)
         ignored = lines.drain()
         if ignored:
             _say(err, f"已忽略 {ignored} 行回合中收到的输入。\n")
 
 
-def _show(result: TurnResult, out: TextIO, err: TextIO) -> None:
-    match result.outcome:
+def project(entry: Entry, out: TextIO, err: TextIO) -> None:
+    """把会话记录里的一项显示在终端上（需求 R13.14、R13.15）。
+
+    显示是记录的投影：只看传进来的这一项，不留状态。不显示的项什么都不输出。
+    """
+    match entry.item:
+        case ModelText():
+            _say(out, entry.item.content.rstrip("\n") + "\n")
+        case ToolCall():
+            _say(out, f"调用 {entry.item.name} {entry.item.arguments}\n")
+        case ToolResult():
+            summary = entry.item.summary or entry.item.content.split("\n")[0]
+            _say(out, f"结果出错：{summary}\n" if entry.item.error else f"结果：{summary}\n")
+        case TurnEnd():
+            _ending(entry.item, out, err)
+        case UserMessage() | Reasoning() | TurnStart() | Approval():
+            pass
+        case _:
+            assert_never(entry.item)
+
+
+def _ending(end: TurnEnd, out: TextIO, err: TextIO) -> None:
+    """回合的结局：完成时不另输出；取消和步数上限不是错误，写标准输出；出错写标准错误（R13.5-S2）。"""
+    match end.outcome:
         case Outcome.DONE:
-            _say(out, result.reply.rstrip("\n") + "\n")
+            pass
         case Outcome.CANCELLED:
             _say(out, "已取消。\n")
         case Outcome.STEP_LIMIT:
-            # 达到上限不是错误，说明写在标准输出（R12.3）。
-            _say(out, f"回合结束：{result.reason}。\n")
+            _say(out, f"回合结束：{end.reason}。\n")
         case Outcome.ERROR:
-            # 错误写标准错误（R13.5-S2），只写类别和状态码。
-            _say(err, f"回合出错：{result.reason}。\n")
+            # 只写类别和状态码。
+            _say(err, f"回合出错：{end.reason}。\n")
         case _:
-            assert_never(result.outcome)
+            assert_never(end.outcome)
 
 
 def _say(stream: TextIO, text: str) -> None:

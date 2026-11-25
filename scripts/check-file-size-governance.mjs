@@ -12,7 +12,8 @@
 import { readdirSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join, relative, extname, sep, dirname } from 'node:path';
 
-// lime-star 使用默认位置；路线图 P3 起把运行时产物目录 .lime-star 加入 SKIP_DIRS。
+// lime-star 使用默认位置；运行时产物目录 .lime-star 随路线图 P3 加入 SKIP_DIRS：
+// 里面是会话记录和请求日志，不是要治理的源码。
 // Python 工具的缓存目录随路线图 P0 加入：它们是一次性产物，不计行数。
 // 其中 .pytest_cache 在 Windows 上是私有目录，别的账户读不了，扫到它整个门禁会失败。
 const WARN_LINES = 800;
@@ -23,6 +24,8 @@ const SKIP_DIRS = new Set([
   'node_modules', '.git', '.hg', 'dist', 'build', 'out', 'coverage',
   '.next', '.nuxt', 'target', '__pycache__', '.venv', 'venv', '.cache',
   '.pytest_cache', '.mypy_cache', '.ruff_cache',
+  // 运行时产物：会话记录、请求日志、证据导出（路线图 P3 起）。
+  '.lime-star',
 ]);
 const SKIP_EXTS = new Set([
   '.png', '.jpg', '.jpeg', '.gif', '.webp', '.ico', '.pdf', '.zip',

@@ -1,3 +1,13 @@
 {
-  "contracts": []
+  "contracts": [
+    {
+      "id": "thread-items",
+      "schema": "protocol/thread-items.schema.json",
+      "consumers": [
+        "src/lime_star/protocol/items.py",
+        "src/lime_star/thread_store/transcript.py",
+        "tests/unit/test_thread_items_schema.py"
+      ]
+    }
+  ]
 }

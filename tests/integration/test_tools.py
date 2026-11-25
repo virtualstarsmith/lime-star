@@ -8,9 +8,10 @@ from pathlib import Path
 from typing import Any
 
 from lime_star.app import Outcome
-from lime_star.protocol import ModelText, ToolCall, ToolResult, UserMessage
+from lime_star.protocol import ModelText, ToolCall, ToolResult, TurnEnd, TurnStart, UserMessage
 from lime_star.tool_runtime import Registry
 from tests.integration.fake_model import FakeModel
+from tests.integration.support import written
 
 
 def put(base: Path, relative: str, data: bytes) -> None:
@@ -51,11 +52,13 @@ def test_three_lines_come_back_numbered(
     put(tmp_path, "notes.txt", "第一行\n第二行\n第三行\n".encode())
     record, content = ask_to_read(make_session, fake_model, file_tools, "notes.txt")
     assert content == "     1  第一行\n     2  第二行\n     3  第三行"
-    assert record.items == (
+    assert written(record) == (
+        TurnStart(),
         UserMessage(content="读一下 notes.txt"),
         ToolCall(call_id="call1", name="read_file", arguments='{"path": "notes.txt"}'),
-        ToolResult(call_id="call1", content=content),
+        ToolResult(call_id="call1", content=content, summary="读到 3 行"),
         ModelText(content="好"),
+        TurnEnd(Outcome.DONE, ""),
     )
 
 
@@ -66,7 +69,7 @@ def test_a_directory_is_reported_as_a_directory(
     put(tmp_path, "sub/.keep", b"")
     record, content = ask_to_read(make_session, fake_model, file_tools, "sub")
     assert content == "这是一个目录：sub。"
-    assert record.items[2] == ToolResult(call_id="call1", content=content, error=True)
+    assert written(record)[3] == ToolResult("call1", content, True, content)
 
 
 def test_a_long_file_is_cut_at_2000_lines(
@@ -79,7 +82,9 @@ def test_a_long_file_is_cut_at_2000_lines(
     assert len(rows) == 2001
     assert (rows[0], rows[1999]) == ("     1  行1", "  2000  行2000")
     assert rows[2000] == "（文件共 5000 行，只读到前 2000 行，还有 3000 行没有读。）"
-    assert record.items[2] == ToolResult(call_id="call1", content=content)
+    assert written(record)[3] == ToolResult(
+        "call1", content, summary="读到 2000 行，还有 3000 行没有读"
+    )
 
 
 def test_a_file_with_a_nul_byte_is_binary(
@@ -107,3 +112,13 @@ def test_a_missing_file_is_a_tool_result_and_the_turn_goes_on(
     """R12.2-S1：读一个不存在的文件，模型收到"文件不存在"的结果，回合没有结束。"""
     _, content = ask_to_read(make_session, fake_model, file_tools, "nope.txt")
     assert content == "文件不存在：nope.txt。"
+
+
+def test_a_file_outside_the_workdir_is_refused(
+    make_session: Any, fake_model: FakeModel, file_tools: Registry, tmp_path: Path
+) -> None:
+    """R8.2-S1：模型请求读工作目录之外的文件，它收到"超出工作目录"的结果，文件没有被读取。"""
+    put(tmp_path, "outside/secret.txt", b"OUTSIDE-MARKER\n")
+    _, content = ask_to_read(make_session, fake_model, file_tools, "../outside/secret.txt")
+    assert content == "超出工作目录：../outside/secret.txt。"
+    assert "OUTSIDE-MARKER" not in content

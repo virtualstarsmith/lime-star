@@ -1,13 +1,14 @@
 """测试替身：一个说 OpenAI Chat Completions 协议的本地 HTTP 服务。
 
-它走真实 HTTP，按脚本顺序返回响应。响应是手写的，没有从真实运行录制。
+它走真实 HTTP，按脚本顺序返回响应。响应是手写的，没有从真实运行录制；
+录制的响应在 tests/fixtures/provider/ 下，由 tests/integration/replay.py 回放。
 只供测试使用（需求 R11.6：正式命令没有替身开关）。
 """
 
 import json
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -134,6 +135,7 @@ class FakeModel:
         self._changed = threading.Condition()
         self._closing = threading.Event()
         self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler_type())
+        self.on_request: Callable[[SeenRequest], None] | None = None
         self._server.daemon_threads = True
 
     def start(self) -> None:
@@ -225,6 +227,9 @@ class FakeModel:
             self._seen.append(seen)
             step = self._steps.pop(0) if self._steps else None
             self._changed.notify_all()
+        if self.on_request is not None:
+            # 请求到达时替身线程里调用一次：用例借此查看此刻磁盘上的状态。
+            self.on_request(seen)
         if step is None:
             self._write(handler, 500, error_body("no scripted step"))
             return

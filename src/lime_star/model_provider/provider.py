@@ -6,7 +6,7 @@
 
 import threading
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import assert_never
@@ -33,21 +33,23 @@ from lime_star.model_provider.errors import ErrorKind, Failure, classify
 from lime_star.model_provider.prompt import SYSTEM_INSTRUCTION
 from lime_star.model_provider.request_log import RequestLog
 from lime_star.protocol import (
-    Item,
+    Approval,
+    Clock,
+    Entry,
     Json,
     ModelFailure,
     ModelReply,
     ModelResult,
     ModelText,
+    NewId,
     Reasoning,
     ToolCall,
     ToolResult,
     ToolSpec,
+    TurnEnd,
+    TurnStart,
     UserMessage,
 )
-
-Clock = Callable[[], datetime]
-NewId = Callable[[], str]
 
 # 主线程按这个切片反复等待。真实的 Ctrl+C 能直接打断等待，但在 Windows 上，
 # CPython 靠一个事件唤醒主线程，解释器版本之间并不一致；挂起的中断则一定会在
@@ -99,7 +101,7 @@ class Provider:
     def respond(
         self,
         turn_id: str,
-        history: Sequence[Item],
+        history: Sequence[Entry],
         tools: Sequence[ToolSpec],
     ) -> ModelResult:
         """发起一次请求并等它结束。
@@ -130,7 +132,7 @@ class Provider:
     def _send(
         self,
         turn_id: str,
-        history: Sequence[Item],
+        history: Sequence[Entry],
         tools: Sequence[ToolSpec],
         request_id: str,
         started: float,
@@ -214,17 +216,20 @@ def _parameters(schema: dict[str, Json]) -> dict[str, object]:
     return dict(schema)
 
 
-def _messages(history: Sequence[Item]) -> list[ChatCompletionMessageParam]:
+def _messages(history: Sequence[Entry]) -> list[ChatCompletionMessageParam]:
     """系统指令只有这一处组装：同一会话的每次请求都带同一份（R2.2）。
 
-    项按发生顺序转成接口消息。模型文本和紧跟它的工具调用同属一次响应，转成同一条 assistant 消息；
-    没有文本的工具调用单独成一条 assistant 消息。推理内容不上线路。
+    历史是会话记录里的项，按发生顺序转成接口消息。模型文本和紧跟它的工具调用同属一次响应，
+    转成同一条 assistant 消息；没有文本的工具调用单独成一条 assistant 消息。
+    推理、回合的开始与结局、批准不上线路。回合结局要不要告诉模型，等仓库所有者决定；
+    定下来只改这里。
     """
     messages: list[ChatCompletionMessageParam] = [
         ChatCompletionSystemMessageParam(role="system", content=SYSTEM_INSTRUCTION)
     ]
     speaking: ChatCompletionAssistantMessageParam | None = None
-    for item in history:
+    for entry in history:
+        item = entry.item
         match item:
             case UserMessage():
                 speaking = None
@@ -248,6 +253,8 @@ def _messages(history: Sequence[Item]) -> list[ChatCompletionMessageParam]:
                         role="tool", tool_call_id=item.call_id, content=item.content
                     )
                 )
+            case TurnStart() | TurnEnd() | Approval():
+                pass
             case _:
                 assert_never(item)
     return messages

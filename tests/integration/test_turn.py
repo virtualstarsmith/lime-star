@@ -14,7 +14,7 @@ from typing import Any
 import pytest
 
 from lime_star.app import ConfigError, Outcome, Session, SessionError, open_session
-from lime_star.protocol import ModelText, UserMessage
+from lime_star.protocol import ModelText, TurnEnd, TurnStart, UserMessage
 from lime_star.tool_runtime import Registry
 from tests.integration.fake_model import (
     FAKE_KEY,
@@ -24,7 +24,7 @@ from tests.integration.fake_model import (
     SeenRequest,
     error_body,
 )
-from tests.integration.support import read_log, wait_for_log
+from tests.integration.support import endings, read_log, wait_for_log, written
 
 
 def write(base: Path, relative: str, data: str) -> None:
@@ -219,7 +219,7 @@ def test_auth_error_ends_the_turn_and_the_session_goes_on(
         "",
         "鉴权失败（HTTP 401）",
     )
-    assert session.read_thread().turns == (failed,)
+    assert endings(session.read_thread()) == [TurnEnd(Outcome.ERROR, "鉴权失败（HTTP 401）")]
     done = session.start_turn("第二问")
     assert (done.outcome, done.reply) == (Outcome.DONE, "这次成功了")
     assert len(fake_model.requests()) == 2
@@ -267,11 +267,18 @@ def test_cancel_stops_waiting_and_next_turn_keeps_history(
     [first, second] = fake_model.requests()
     assert contents(second)[1:] == ["第一问", "第二问"]
     record = session.read_thread()
-    assert record.turns == (cancelled, done)
-    assert record.items == (
+    assert endings(record) == [
+        TurnEnd(Outcome.CANCELLED, "用户按 Ctrl+C 取消"),
+        TurnEnd(Outcome.DONE, ""),
+    ]
+    assert written(record) == (
+        TurnStart(),
         UserMessage(content="第一问"),
+        TurnEnd(Outcome.CANCELLED, "用户按 Ctrl+C 取消"),
+        TurnStart(),
         UserMessage(content="第二问"),
         ModelText(content="第二答"),
+        TurnEnd(Outcome.DONE, ""),
     )
     hold.release()
     by_turn = {record["turn_id"]: record for record in wait_for_log(log_path, 2)}
