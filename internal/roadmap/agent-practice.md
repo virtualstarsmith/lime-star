@@ -12,7 +12,7 @@
 ## 当前事实
 
 - 仓库已建立规则、事实源、计划、验证四层，以及验收方法论和 harness 反馈层的目标骨架，见 `../exec-plans/paradigm-port-plan.md`。
-- P0 已于 2026-11-24 交付工程骨架和空命令；P1 已于 2026-11-24 交付多轮对话、请求日志和凭证守卫；P2 已于 2026-11-24 交付回合循环、工具注册表和 read_file（提交 2cc4cbe，CI 还没有跑）。P3 进行中。目标布局见 internal/aiprompts/architecture.md。
+- P0 已于 2026-11-24 交付工程骨架和空命令；P1 已于 2026-11-24 交付多轮对话、请求日志和凭证守卫；P2 已于 2026-11-24 交付回合循环、工具注册表和 read_file（提交 2cc4cbe）；P3 已于 2026-11-24 交付会话记录事实源、第一份回放夹具，并让 read_file 带着路径边界进入正式命令（提交 23c431d）。两个提交随同一次推送，CI 于 2026-11-25 通过。P4 未开始。目标布局见 internal/aiprompts/architecture.md。
 - 代码由 Agent 编写，仓库所有者验收；提交按根 AGENTS.md 的提交规则执行。
 - 技术栈：Python 3.11 及以上（uv）；OpenAI 兼容模型接口；治理门禁是零依赖的 Node 脚本。
 - 需求已于 2026-11-23 重写为行为规格：一个全局文件加五个能力文件，R1 到 R14，见 `../exec-plans/prd-alignment-plan.md`；仓库所有者于 2026-11-24 确认，原有的三个未决问题按推荐答案落成决策。各阶段的"交付需求"引用它的编号，不再复述需求。
@@ -402,8 +402,8 @@ MVP 之后的扩展候选：多模型路由、TUI、子 Agent、首个 release�
 | --- | --- | --- | --- |
 | P0 | `uv run lime-star --version`；`npm run verify:local -- --full` | Gate B | 通过（2026-11-24）：本地 8 个任务通过，CI 跑通一次 |
 | P1 | `lime-star` 真实对话；密钥守卫脚本 | Live + Gate B | 通过（2026-11-24）：真实模型连续三轮，第三轮答出第一轮说的名字；请求日志三条 ok，没有内容和密钥；密钥守卫通过 |
-| P2 | `uv run pytest tests/unit -q` | Unit + 入口集成 | 通过（2026-11-24）：单元测试 89 条，运行前禁用全部 socket；入口集成 30 条、Gate B 回归 35 条，模型都是测试替身；门禁 11 个任务通过。不含 Live。CI 没有跑 |
-| P3 | `npm run test:contracts`；夹具驱动的集成测试 | Current fixture + Gate A | 未跑 |
+| P2 | `uv run pytest tests/unit -q` | Unit + 入口集成 | 通过（2026-11-24）：单元测试 89 条，运行前禁用全部 socket；入口集成 30 条、Gate B 回归 35 条，模型都是测试替身；门禁 11 个任务通过。不含 Live。CI 通过（2026-11-25，运行 45515242850） |
+| P3 | `npm run test:contracts`；夹具驱动的集成测试 | Current fixture + Gate A | 通过（2026-11-24）：契约 1 项通过；Current fixture 2 条，录制的真实响应不联网走完完整主链；Gate A 9 条。CI 通过（2026-11-25，运行 45515242850） |
 | P4 | `uv run python scripts/smoke/agent_gate_b.py` | Gate B | 未跑 |
 | P5 | `lime-star --resume`；冒烟脚本 | Gate B | 未跑 |
 | P6 | 评测 runner 与 replay 提升脚本 | 入口集成 | 未跑 |
@@ -446,6 +446,14 @@ MVP 之后的扩展候选：多模型路由、TUI、子 Agent、首个 release�
 - 仓库所有者说“read_file提到p3，开始P3”：read_file 在 P3 进入正式命令，路径边界 R8.1 到 R8.3 随之提前，但只约束 read_file。P3、P4 的目标、交付需求、落地的规则和验收动作据此改了。P4 仍然交付 list_dir 与 write_file，并让它们受同一边界约束。
 - P2 计划里另一件待定的事（取消的回合要不要让模型知道）仓库所有者没有答复，P3 保持现状。
 
+### 2026-11-25 P3 transcript 完成
+
+- 改动：thread_store 把每一项追加进工作目录下 .lime-star/threads 的 JSON Lines 文件并落盘，只凭文件读回；read_thread 与终端显示只从它派生，app 不再在内存里留第二份。循环写下回合的开始与结局，给没有执行的调用补一条出错的结果。read_file 带着工作目录边界进入正式命令。从真实模型录制了第一份回放夹具，测试默认回放。契约 thread-items 登记；根 AGENTS.md 加入“不得自己拼第二份会话真相”的硬规则；architecture.md 的目录地图与 Owner 章节 7.2。细节见 `../exec-plans/p3-transcript-plan.md`。
+- 验证：三条退出条件逐条满足。Current fixture：录制的真实响应（模型 glm-5.2）驱动 start_turn 走完“模型请求工具、执行、回填、再请求、结束”，不联网。Gate A：只凭文件核对会话记录的 9 条用例。单元测试 139 条，运行前禁用全部 socket；入口集成 46 条、Gate B 回归 23 条，模型都是测试替身。交付的需求逐条有验证记录，对应表在计划里。本地门禁 11 个任务通过，260 条通过、2 条跳过（Live）。Live 只有录制那一次，共 4 次真实请求。架构确认块已由仓库所有者签署。
+- CI：推送后跑通一次，运行 45515242850，针对提交 23c431d，结论 success。verify 作业的 Local gate (full) 在 Linux runner 上通过，这是 P2 与 P3 的代码第一次在 Windows 以外运行。依据是运行、作业和步骤的状态，日志没有读。P2 的提交 2cc4cbe 包含在这次推送里，上一条记录里“CI 没有跑”由此补上，P2 也记为完成。
+- 完成度：P3 100%，P2 100%。路线图 57%，P0 到 P3 完成，P4 到 P7 未开始。
+- 下一刀：按 P4 的开工话术开始 P4。开工前有一件事最好先定：取消的回合要不要让模型知道。P2 和 P3 的计划里都提过，仓库所有者还没有答复；P4 的写文件和执行命令会让它更要紧。P4 还要带上 P3 的两条观察：自动化脚本以输入提示为同步点，不是回复文本；模拟的 Ctrl+C 打不断一次长的阻塞，run_command 要按切片等待。
+
 ## 当前结论
 
-完成度: 42%（P0、P1 完成；P2 已交付，还差 CI；P3 进行中；P4 到 P7 未开始）
+完成度: 57%（P0 到 P3 完成；P4 到 P7 未开始）

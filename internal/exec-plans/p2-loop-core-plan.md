@@ -1,6 +1,6 @@
 # p2-loop-core 计划
 
-状态: in_progress
+状态: done
 日期: 2026-11-24
 主目标: 把"模型决定调用工具、程序执行、结果回填、继续"的回合循环做成不联网就能测试的纯核心，建立工具注册表，并让 read_file 可被注册。
 
@@ -211,10 +211,18 @@ Responsible developer confirmation: 仓库所有者，2026-11-24
 - 完成度：95%。还差 CI；路线图 P2 的阶段结论等 CI 通过后再追加。
 - 下一刀：仓库所有者要求 push 之后核对 CI；通过后在路线图的进度记录里追加 P2 的阶段结论，把本计划标为 done，并从 README.md 的当前计划表移除。P3 开工前先请仓库所有者回答“待仓库所有者决定”里的两件事。
 
+### 2026-11-25（CI 与收尾）
+
+- 改动：提交 2cc4cbe 随 P3 的提交 23c431d 一起推送（f844e54..23c431d）。路线图里 P2 的阶段结论已于 2026-11-24 追加，其中写的“CI 没有跑”由下面这条结果补上。本计划标为 done，并从 README.md 的当前计划表移除。
+- 验证：CI 运行 45515242850 针对 23c431d 通过，这个提交包含本计划的改动；verify 作业的 Local gate (full) 在 Linux runner 上成功。依据是运行、作业和步骤的状态，日志没有读。这是本阶段和 P3 的代码第一次在 Windows 以外运行。
+- 未验证：Live 不在 P2 的证据等级里，没有跑。Python 3.11 到 3.13 仍然没有在本地跑过。
+- 完成度：100%
+- 下一刀：无。
+
 ## 当前结论
 
 - 治理四分类：current 新增 protocol（项、回合结局、三个边界接口）、agent_runtime（run_turn）、tool_runtime（Registry、参数校验、read_file）、model_provider 的 respond、app 的装配（open_session 的 tools 参数，Session 经循环跑回合，Record.items）、cli 对步数上限的显示、两条架构守卫和 verify-local 的 architecture 任务、architecture.md 第 4 节的依赖矩阵与 Owner 章节 7.1。compat、deprecated、dead 均无新增或删除。删掉的只有 current 内部被直接替换的入口：Provider.complete，model_provider 导出的 Message、ModelError、Reply，Record.messages，以及 app 里 Outcome 与 TurnResult 的定义（两个名字挪进 protocol，app 照旧导出）。它们不是能力的退役，不属于四类中的任何一类。
-- 验证结果与未验证原因：见验证矩阵与进度记录。架构确认块已由仓库所有者签署，本地门禁 11 个任务通过；CI 要等推送之后才能核对。路线图 P2 的五条退出条件逐条有结果：循环状态机的四种转移在不联网的单元测试里各有用例；工具结果不打断回合，循环按 R12.1 的顺序进行；注册表支持按名称注册与查找，工具有名称、描述、JSON Schema 参数和执行函数；read_file 可被注册，R5.1 到 R5.3 在入口集成里各有用例；循环模块只导入 collections.abc 和 lime_star.protocol。本地门禁停在确认块守卫上，这是“未确认的重大变更不得标记完成”的机械表现。
+- 验证结果与未验证原因：见验证矩阵与进度记录。架构确认块已由仓库所有者签署，本地门禁 11 个任务通过；提交随 P3 一起推送后 CI 通过（运行 45515242850）。路线图 P2 的五条退出条件逐条有结果：循环状态机的四种转移在不联网的单元测试里各有用例；工具结果不打断回合，循环按 R12.1 的顺序进行；注册表支持按名称注册与查找，工具有名称、描述、JSON Schema 参数和执行函数；read_file 可被注册，R5.1 到 R5.3 在入口集成里各有用例；循环模块只导入 collections.abc 和 lime_star.protocol。签署之前，本地门禁停在确认块守卫上，那是“未确认的重大变更不得标记完成”的机械表现。
 - 来源声明：对照阅读了 lime 仓库 lime-rs/crates/agent-runtime/src/reply_loop.rs、同目录 provider_turn.rs 的文件头注释，以及 scripts/check-import-boundaries.mjs 与 scripts/governance/check-architecture-confirmation.mjs 的做法。只取三个思路：把“已经试了几次、还能不能继续”做成不依赖任何东西的纯状态；一步一物化，工具全部完成后才发下一次请求；守卫要能在违例上被证伪。按本仓库语境重写，没有复制原文。另读了 openai SDK 3.58.0 的类型声明，用来确定工具定义、工具调用参数和 omit 的写法。
 
-完成度: 95%
+完成度: 100%
