@@ -23,7 +23,6 @@
 | 计划 | 状态 | 主目标 |
 | --- | --- | --- |
 | `p4-tools-approval-plan.md` | 进行中 | 列目录、写文件、执行命令与审批，MVP 主场景的 Gate B 冒烟 |
-| `p6-acceptance-harness-plan.md` | 进行中 | 证据导出、失败提升为回放样本、固定任务集评测 |
 
 计划收尾后，从本表删除对应行。路线图不列入本表，见 `../roadmap/README.md`。
 
