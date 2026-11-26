@@ -221,7 +221,7 @@ def _messages(history: Sequence[Entry]) -> list[ChatCompletionMessageParam]:
 
     历史是会话记录里的项，按发生顺序转成接口消息。模型文本和紧跟它的工具调用同属一次响应，
     转成同一条 assistant 消息；没有文本的工具调用单独成一条 assistant 消息。
-    推理、回合的开始与结局、批准不上线路。回合结局要不要告诉模型，等仓库所有者决定；
+    推理、回合的开始与结局、批准不上线路：用户的决定由工具结果告诉模型。回合结局要不要告诉模型，等仓库所有者决定；
     定下来只改这里。
     """
     messages: list[ChatCompletionMessageParam] = [

@@ -4,6 +4,7 @@ import io
 import json
 import os
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Callable, Sequence
@@ -199,10 +200,13 @@ class CliProcess:
         return code
 
     def close(self) -> None:
-        """收尾：进程还活着就结束它，管道全部关掉。"""
+        """收尾：进程还活着就结束整棵进程树，管道全部关掉。
+
+        Windows 上 lime-star 是启动器，会话进程是它的子进程：只结束启动器，会话进程会留在后台。
+        用例失败时靠这里收尾，所以失败的用例也不能留下一个一直等输入的进程。
+        """
         if self.process.poll() is None:
-            self.process.kill()
-            self.process.wait(timeout=10)
+            kill_tree(self.process)
         for pipe in (self.process.stdin, self.process.stdout, self.process.stderr):
             if pipe is not None:
                 pipe.close()
@@ -245,3 +249,57 @@ def kill_tree(process: subprocess.Popen[bytes]) -> None:
     else:
         process.kill()
     process.wait(timeout=10)
+
+
+SYNCHRONIZE = 0x00100000
+"""只用来等待一个进程的访问权限（Windows）。"""
+
+
+def alive(pid: int) -> bool:
+    """一个进程是否还在运行。用例里的进程号都是刚拿到的，不会被系统复用。"""
+    if sys.platform == "win32":
+        return _alive_on_windows(pid)
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def _alive_on_windows(pid: int) -> bool:
+    if sys.platform != "win32":
+        raise AssertionError("只在 Windows 上运行")
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.WaitForSingleObject.restype = wintypes.DWORD
+    kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    handle = kernel32.OpenProcess(SYNCHRONIZE, False, pid)
+    if not handle:
+        return False  # 打不开句柄：进程已经不在
+    try:
+        return bool(kernel32.WaitForSingleObject(handle, 0))  # 不等了还在运行时返回等待超时
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+SLEEPER = """\
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+print("started", flush=True)
+time.sleep(0.5)  # 让这一行先到达管道，用例才拿 pids.txt 当同步点
+child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(600)"])
+Path("pids.txt").write_text(f"{os.getpid()} {child.pid}")
+time.sleep(600)
+"""
+# 一条跑不完的命令（写成 sleeper.py）：打印一行，派生一个子进程，
+# 把两个进程号写进 pids.txt，然后长睡。
+# 这里用注释而不是字符串：紧跟在后面的字符串会被 Python 拼进 SLEEPER。

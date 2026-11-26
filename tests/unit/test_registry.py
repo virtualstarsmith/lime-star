@@ -1,4 +1,4 @@
-"""注册表与参数校验的单元测试：注册与查找、未知工具、参数不合法、运行时出错。
+"""注册表与参数校验的单元测试：注册与查找、未知工具、参数不合法、运行时出错、危险操作执行前的批准。
 
 证据等级：Unit。对应路线图 P2 的退出条件 3，以及 R12.2 里"工具出错也是结果"。
 """
@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from lime_star.protocol import Json, ToolCall, ToolResult
-from lime_star.tool_runtime import Registry, Tool, ToolOutput, default_tools, read_file
+from lime_star.protocol import Json, Pending, ToolCall, ToolResult
+from lime_star.tool_runtime import REJECTED, Registry, Tool, ToolOutput, default_tools, read_file
 
 SCHEMA: dict[str, Json] = {
     "type": "object",
@@ -30,6 +30,34 @@ def call(name: str, arguments: str = '{"path": "a.txt"}', call_id: str = "c1") -
 def failed(reason: str) -> ToolResult:
     """出错的工具结果：同一句说明既交给模型，也是给终端看的摘要。"""
     return ToolResult("c1", reason, error=True, summary=reason)
+
+
+BOMB_RAN: list[str] = []
+"""危险工具的执行函数被调用过的记录。"""
+
+
+def bomb(_arguments: Mapping[str, Json]) -> ToolOutput:
+    BOMB_RAN.append("run")
+    return ToolOutput("写了")
+
+
+def why(arguments: Mapping[str, Json]) -> str:
+    """危险工具在批准之前给出的给用户看的说明。"""
+    return f"要动 {arguments['path']}"
+
+
+def reject(_pending: Pending) -> bool:
+    return False
+
+
+def take_note(pending: Pending) -> bool:
+    """批准来源的替身：记下这次请求，批准。"""
+    ASKED.append(pending)
+    return True
+
+
+ASKED: list[Pending] = []
+"""批准来源收到过的请求。"""
 
 
 def test_a_tool_is_registered_by_name_and_found() -> None:
@@ -155,7 +183,76 @@ def test_a_summary_is_kept_or_taken_from_the_first_line() -> None:
     assert registry.execute(call("plain")).summary == "第一行"
 
 
-def test_the_default_tools_register_read_file(tmp_path: Path) -> None:
-    """正式命令的工具集：路线图 P3 只有 read_file。"""
-    [spec] = default_tools(tmp_path).specs()
-    assert spec.name == "read_file"
+def test_a_dangerous_tool_runs_only_after_approval() -> None:
+    """R7.6：危险工具先经批准来源取得批准，批准之后才调用它的执行函数；批准来源拿到这次调用的说明。"""
+    BOMB_RAN.clear()
+    ASKED.clear()
+    tool = Tool("bomb", "危险操作", SCHEMA, bomb, danger=why)
+    result = Registry([tool]).execute(call("bomb"), take_note)
+    assert (result.content, BOMB_RAN) == ("写了", ["run"])
+    assert ASKED == [Pending("c1", "bomb", '{"path": "a.txt"}', "要动 a.txt")]
+
+
+def test_a_rejected_dangerous_tool_never_runs() -> None:
+    """R7.10、R7.13：批准来源不给批准，执行函数不被调用，拒绝作为这次调用的结果交给模型。"""
+    BOMB_RAN.clear()
+    tool = Tool("bomb", "危险操作", SCHEMA, bomb, danger=why)
+    assert Registry([tool]).execute(call("bomb"), reject) == failed(REJECTED)
+    assert BOMB_RAN == []
+
+
+def test_a_dangerous_tool_is_refused_without_an_approver() -> None:
+    """R7.6：没有绑定批准来源时危险工具不执行。拿不到批准就是拒绝。"""
+    BOMB_RAN.clear()
+    tool = Tool("bomb", "危险操作", SCHEMA, bomb, danger=why)
+    assert Registry([tool]).execute(call("bomb")) == failed(REJECTED)
+    assert BOMB_RAN == []
+
+
+def test_bad_arguments_do_not_reach_the_approval() -> None:
+    """参数不合法的调用既不请求批准，也不执行。"""
+    BOMB_RAN.clear()
+    ASKED.clear()
+    tool = Tool("bomb", "危险操作", SCHEMA, bomb, danger=why)
+    result = Registry([tool]).execute(call("bomb", '{"count": 1}'), take_note)
+    assert result == failed("缺少必填的参数：path。")
+    assert (ASKED, BOMB_RAN) == ([], [])
+
+
+def test_a_check_that_refuses_skips_the_approval_and_the_run() -> None:
+    """R8.2-S2、R7.2-S1 的依据：工具在批准之前就发现这次调用不能做，
+    结果直接交回，不进入批准提示。"""
+    BOMB_RAN.clear()
+    ASKED.clear()
+
+    def outside(arguments: Mapping[str, Json]) -> ToolOutput:
+        return ToolOutput(f"超出工作目录：{arguments['path']}。", error=True)
+
+    tool = Tool("bomb", "危险操作", SCHEMA, bomb, danger=outside)
+    result = Registry([tool]).execute(call("bomb"), take_note)
+    assert result == failed("超出工作目录：a.txt。")
+    assert (ASKED, BOMB_RAN) == ([], [])
+
+
+def test_approved_by_binds_the_approver_to_the_registry() -> None:
+    """app 每个回合用 approved_by 绑上批准来源：工具集的说明不变，危险调用都经这个来源。"""
+    BOMB_RAN.clear()
+    ASKED.clear()
+    registry = Registry([Tool("bomb", "危险操作", SCHEMA, bomb, danger=why)])
+    granted = registry.approved_by(take_note)
+    assert granted.specs() == registry.specs()
+    assert granted.execute(call("bomb")) == ToolResult("c1", "写了", summary="写了")
+    assert [pending.name for pending in ASKED] == ["bomb"]
+
+
+def test_the_default_tools_are_two_safe_and_two_dangerous(tmp_path: Path) -> None:
+    """决策 D-19、R7.6-S2：正式命令的工具集里只有 write_file 和 run_command 是危险操作。"""
+    tools = default_tools(tmp_path)
+    names = [spec.name for spec in tools.specs()]
+    assert names == ["read_file", "list_dir", "write_file", "run_command"]
+    dangers: list[bool] = []
+    for name in names:
+        tool = tools.find(name)
+        assert tool is not None
+        dangers.append(tool.danger is not None)
+    assert dangers == [False, False, True, True]

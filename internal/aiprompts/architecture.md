@@ -64,6 +64,7 @@ CLI 输入
 3. **一步一物化。** 每次模型响应先落成 item（文本、推理、工具调用）；一次响应里的工具全部执行完、结果写回同一份 transcript 之后，才进行下一次模型请求。
 4. **transcript 是唯一事实源。** 终端显示、证据导出、回放和评测都只能从它派生。
 5. **证据与回放是下游。** 它们只消费 transcript，不得反向定义运行时真相。
+6. **危险操作先批准后执行。** write_file 与 run_command 只有在 app 回合入口经 `respond_action` 收到批准之后才执行；批准与拒绝都先写进会话记录。CLI 只负责提问和交回决定。
 
 ## 4. 依赖方向与禁止边界
 
@@ -120,7 +121,7 @@ Responsible developer confirmation: <姓名/代号>, <日期>
 落地于路线图 P2（2026-11-24）。阶段计划见 `../exec-plans/p2-loop-core-plan.md`。
 
 - 主链：app 回合入口 `start_turn` -> agent_runtime 的 `run_turn` -> model_provider 的一次模型请求、tool_runtime 的一次工具执行 -> 每一步的结果按发生顺序写回会话记录 -> CLI 投影。P2 的会话记录是 app 内存里的项，P3 起由 thread_store 持有。
-- owner：`src/lime_star/agent_runtime/` 是回合循环的唯一 current owner；`src/lime_star/protocol/` 是项、回合结局和三个边界接口的 owner；`src/lime_star/tool_runtime/` 是工具注册表的 owner。工具的完整边界（路径边界、危险等级、审批）随 P4 追加下一章。
+- owner：`src/lime_star/agent_runtime/` 是回合循环的唯一 current owner；`src/lime_star/protocol/` 是项、回合结局和三个边界接口的 owner；`src/lime_star/tool_runtime/` 是工具注册表的 owner。工具的完整边界（路径边界、危险等级、审批）见 7.3。
 - 边界：
   1. 循环只依赖 protocol，不导入模型客户端、工具实现或存储。守卫是 `tests/integration/test_guard_architecture.py` 里的依赖矩阵检查。
   2. 循环通过三个接口与外界往来：模型（respond）、工具集（specs、execute）、会话记录（append）。接口是 protocol 里的结构化类型，由 app 在回合入口装配。
@@ -161,4 +162,29 @@ Architecture impact: major
 架构图已更新：architecture.md 第 2 节目录地图（thread_store、protocol 两行的状态列）、本节 7.2
 Responsible developer confirmation: 仓库所有者，2026-11-25
 确认内容：本阶段新增 thread_store 和契约目录两个 owner，第一次把会话记录持久化到磁盘，并让终端显示只从它派生。正式命令第一次向模型提供工具：read_file，带工作目录边界。替代方案：让显示直接吃循环发出的事件而不落盘，那样显示会成为第二份会话真相，回放和证据也无从派生；把回放做成产品命令的开关，被 R11.6 禁止，所以回放只经测试注入的 HTTP 传输。回滚策略：删除 thread_store 和仓库根的 protocol 目录，取消契约登记；Session 回到 P2 的内存记录，cli 回到按回合结局显示；默认工具集回到空。已经在工作目录 .lime-star/threads 下写出的记录文件不需要迁移，回滚后没有代码读它们。
+```
+
+### 7.3 工具与审批
+
+落地于路线图 P4（2026-11-26）。阶段计划见 `../exec-plans/p4-tools-approval-plan.md`。
+
+- 主链：app 回合入口 `start_turn` -> agent_runtime 的循环 -> tool_runtime 的一次工具执行。执行危险操作之前，工具边界向 app 请求批准；app 经提问回调请 CLI 向用户提问，CLI 用 `respond_action` 交回决定；app 把批准项写进会话记录之后才放行 -> CLI 投影。
+- owner：`src/lime_star/tool_runtime/` 是四个工具、工作目录边界、危险等级和执行前批准的唯一 current owner。app 回合入口是批准流程和 `respond_action` 的 owner。CLI 只负责向用户提问并把决定交回 app。
+- 边界：
+  1. 危险与否按工具固定（决策 D-19）：write_file 和 run_command 是危险操作，read_file 和 list_dir 不是。危险工具带一个 danger，注册表在调用它的执行函数之前一定先经批准来源取得批准；拿不到就不执行，给出"用户拒绝了这次操作"的结果。这是结构性的保证，不靠每个工具自觉（R7.6、R7.10、R7.13）。
+  2. 批准来源由 app 在每个回合绑定（`Registry.approved_by`）。决定做出之后、操作执行之前，app 先把批准项写进会话记录（R7.12），所以记录里的顺序固定是：工具调用、批准、工具结果。等待中的批准只在内存里：进程在等待时被结束，记录里没有批准项，操作也没有执行（R9.3-S2）。
+  3. 路径边界只约束文件工具（read_file、list_dir、write_file），按真实位置判断；越界的调用不进入批准提示（R8.2-S2）。run_command 不做路径检查，唯一的安全边界是审批（R8.4，决策 D-22），批准提示显示原样的命令（R7.8）。
+  4. 注定失败的调用（越界、父目录不存在、目标是个目录、参数不合法）不进入批准提示，直接作为工具结果交回模型。
+  5. CLI 只在提示出现之后才接受回应：提示之前到达的输入按回合中的输入丢弃（R13.8）；只有 y 算批准（R7.9，决策 D-20）。提问回调可以先返回、稍后再交回决定，所以别的界面也能接同一个入口。
+  6. 命令的进程被圈在一棵进程树里：Windows 上是作业对象，其他平台是进程组。超时（R7.4）和 Ctrl+C（R12.5-S1）都是结束整棵树。命令执行到一半被打断时，已经产生的输出作为这次调用的结果如实记下（protocol 的 Halted），不说成"没有执行"。
+  7. 终端摘要按决策 D-08 只占一行：命令输出不回显到终端，它在会话记录里。
+- 相关协议：Approval（决定）、Pending（等待批准的操作）、Approver（批准来源）、Halted（被中断的工具带回的结果），都在 protocol。会话记录一行的形状没有变。
+- 守卫：Gate B 冒烟 `scripts/smoke/agent_gate_b.py` 对着会话记录断言每个危险调用都先有批准项、后有结果。入口集成、真实进程、真实控制台三层用例在 tests/integration。
+- 退出条件：这套能力被另一个 owner 取代时，删除对应的工具和 `respond_action`，在第 4 节登记 `Registry.approved_by`、`Session.respond_action` 为 dead / deleted / forbidden-to-restore，删除本章和根 AGENTS.md 的审批硬规则。
+
+```text
+Architecture impact: major
+架构图已更新：architecture.md 第 3 节加一条固定判断、本节 7.3；7.1 的指引改指 7.3
+Responsible developer confirmation: 仓库所有者，2026-11-26
+确认内容：本阶段不新增目录，也不改依赖矩阵：tool_runtime、app、cli 三个 owner 都已存在。改变的是业务主链：危险操作在执行之前多了一个节点，批准；回应它经 app 回合入口的 respond_action，循环对此一无所知。正式命令第一次向模型提供 write_file 和 run_command，第一次能在用户的工作目录里改动文件、执行命令。替代方案：让循环自己处理审批，循环就得知道危险等级和用户界面，被"循环是纯核心"禁止；让每个工具在执行函数里自己请求批准，那要靠自觉，所以改成注册表里的结构性保证，拿不到批准就不调用执行函数；结束命令的进程树用 taskkill，中间进程先退出时它的子进程会漏掉，所以 Windows 上用作业对象。回滚策略：默认工具集回到 read_file 和 list_dir，删除 write_file、run_command 和 Session.respond_action；已经写出的会话记录不需要迁移，批准项的形状从 P3 起就在契约里。
 ```

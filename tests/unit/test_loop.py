@@ -17,6 +17,7 @@ from lime_star.agent_runtime.loop import (
 )
 from lime_star.protocol import (
     Entry,
+    Halted,
     Item,
     Json,
     ModelFailure,
@@ -339,6 +340,41 @@ def test_ctrl_c_during_a_tool_gives_the_remaining_calls_a_result() -> None:
     ]
     assert len(model.histories) == 1
     assert_paired(record)
+
+
+def test_a_tool_interrupted_midway_keeps_the_result_it_brings_back() -> None:
+    """R12.5-S1：工具执行到一半被 Ctrl+C 打断，它带回的结果如实记下，不说成"没有执行"；
+    后面的调用没有执行。"""
+    calls = tuple(call(f"tool{n}", f"c{n}") for n in (1, 2, 3))
+    halted = Halted("命令已被终止。\n已经有一半的输出", summary="已取消，命令已终止")
+    tools = FakeTools("tool1", "tool2", "tool3", results={"tool2": halted})
+    model = ScriptedModel(ModelReply(calls=calls), ModelReply(text="不该被用到"))
+    result, record = run(model, tools)
+    assert (result.outcome, result.reason) == (Outcome.CANCELLED, CANCELLED_BY_USER)
+    assert [made.name for made in tools.executed] == ["tool1", "tool2"]
+    assert items(record)[2:] == [
+        *calls,
+        result_of(calls[0]),
+        ToolResult("c2", "命令已被终止。\n已经有一半的输出", True, "已取消，命令已终止"),
+        ToolResult("c3", NOT_RUN_CANCELLED, True, NOT_RUN_CANCELLED),
+        TurnEnd(Outcome.CANCELLED, CANCELLED_BY_USER),
+    ]
+    assert len(model.histories) == 1
+    assert_paired(record)
+
+
+def test_an_interrupted_tool_without_a_summary_shows_its_first_line() -> None:
+    """被打断的工具没有给摘要时，终端上的摘要取它带回内容的第一行。"""
+    calls = (call("tool1", "c1"), call("tool2", "c2"))
+    tools = FakeTools("tool1", "tool2", results={"tool1": Halted("第一行\n第二行")})
+    model = ScriptedModel(ModelReply(calls=calls), ModelReply(text="不该被用到"))
+    result, record = run(model, tools)
+    assert result.outcome is Outcome.CANCELLED
+    assert items(record)[4:7] == [
+        ToolResult("c1", "第一行\n第二行", True, "第一行"),
+        ToolResult("c2", NOT_RUN_CANCELLED, True, NOT_RUN_CANCELLED),
+        TurnEnd(Outcome.CANCELLED, CANCELLED_BY_USER),
+    ]
 
 
 def test_the_tools_are_offered_to_every_request() -> None:

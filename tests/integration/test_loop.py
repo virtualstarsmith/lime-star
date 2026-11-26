@@ -87,33 +87,40 @@ def test_a_tool_call_is_run_and_its_result_goes_back_to_the_model(
     )
 
 
-def test_the_product_session_offers_read_file(
+def test_the_product_session_offers_the_four_tools(
     make_session: Any, fake_model: FakeModel, tmp_path: Path
 ) -> None:
-    """正式命令的工具集只有 read_file；一个回合的每次请求都带同一份工具定义。"""
+    """正式命令的工具集是四个工具，read_file 在第一位；一个回合的每次请求都带同一份工具定义。"""
     put(tmp_path, "a.txt", "甲\n")
     fake_model.call(READ_A)
     fake_model.reply("好")
     make_session().start_turn("读一下 a.txt")
     first, second = fake_model.requests()
     assert first.tools == second.tools
-    assert first.tools == [
-        {
-            "type": "function",
-            "function": {
-                "name": "read_file",
-                "description": "读取工作目录里的一个 UTF-8 文本文件，返回带行号的文件内容。"
-                "一次最多返回 2000 行，更长的文件会说明还有多少行没有读。",
-                "parameters": {
-                    "type": "object",
-                    "properties": {
-                        "path": {"type": "string", "description": "相对工作目录的文件路径。"}
-                    },
-                    "required": ["path"],
-                },
-            },
-        }
+    functions = [tool["function"] for tool in first.tools]
+    assert [function["name"] for function in functions] == [
+        "read_file",
+        "list_dir",
+        "write_file",
+        "run_command",
     ]
+    assert functions[0] == {
+        "name": "read_file",
+        "description": "读取工作目录里的一个 UTF-8 文本文件，返回带行号的文件内容。"
+        "一次最多返回 2000 行，更长的文件会说明还有多少行没有读。",
+        "parameters": {
+            "type": "object",
+            "properties": {"path": {"type": "string", "description": "相对工作目录的文件路径。"}},
+            "required": ["path"],
+        },
+    }
+    assert [function["parameters"].get("required", []) for function in functions] == [
+        ["path"],
+        [],
+        ["path", "content"],
+        ["command"],
+    ]
+    assert all("危险操作" in function["description"] for function in functions[2:])
 
 
 def test_a_session_with_an_empty_registry_sends_no_tool_definitions(

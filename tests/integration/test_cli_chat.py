@@ -8,6 +8,7 @@ test_cli_process.py。Ctrl+C 用 _thread.interrupt_main() 模拟：它和真实 
 """
 
 import io
+import json
 import queue
 import threading
 from collections.abc import Callable
@@ -18,7 +19,7 @@ import pytest
 
 from lime_star import __version__
 from lime_star.app import Outcome, Session
-from lime_star.cli.chat import PROMPT, InputError, StdinLines, chat
+from lime_star.cli.chat import ASK, PROMPT, InputError, StdinLines, chat
 from tests.integration.fake_model import FAKE_KEY, FakeModel, Hold
 from tests.integration.support import endings, wait_until
 
@@ -54,6 +55,26 @@ def in_thread(action: Callable[[], None]) -> threading.Thread:
     thread = threading.Thread(target=action, daemon=True)
     thread.start()
     return thread
+
+
+class QueuedLines(ScriptedLines):
+    """照产品的做法丢弃已经排队的行并计数的输入源：别的用例预先把 /exit 排进队列，靠的是不丢。"""
+
+    def drain(self) -> int:
+        dropped = 0
+        ended = False
+        while True:
+            try:
+                item = self._queue.get_nowait()
+            except queue.Empty:
+                break
+            if item is None:
+                ended = True
+            else:
+                dropped += 1
+        if ended:
+            self._queue.put(None)
+        return dropped
 
 
 def banner(workdir: Path) -> str:
@@ -214,6 +235,19 @@ class BrokenStream:
         raise OSError("broken")
 
 
+class BreakingStream:
+    """给出第一行之后就读不下去的输入流。"""
+
+    def __init__(self, first: str) -> None:
+        self._first: str | None = first
+
+    def readline(self) -> str:
+        if self._first is None:
+            raise OSError("broken")
+        line, self._first = self._first, None
+        return line
+
+
 def test_unreadable_input_ends_the_session_with_exit_code_one(
     make_session: Any, tmp_path: Path
 ) -> None:
@@ -302,3 +336,176 @@ def test_a_failed_tool_result_is_shown_with_its_error(
         + "没有这个文件\n"
         + PROMPT
     )
+
+
+WRITE_PROMPT = (
+    "请求批准 write_file：写入 hello.py（新建文件）。要写入的内容：\n"
+    "print('hello')\n"
+    "----- 内容结束，共 1 行 -----\n"
+)
+REJECTION = "结果出错：用户拒绝了这次操作，没有执行。\n"
+
+
+def ask_to_write(fake_model: FakeModel) -> str:
+    """让替身模型请求写 hello.py，再给一句最终回复。返回模型给出的参数原文。"""
+    arguments = json.dumps({"path": "hello.py", "content": "print('hello')\n"})
+    fake_model.call(("write_file", arguments))
+    fake_model.reply("写好了")
+    return arguments
+
+
+def answer_when_asked(
+    lines: ScriptedLines, out: io.StringIO, answer: str | None, then: str = "/exit"
+) -> None:
+    """提示出现之后才给输入：等到 [y/n] 再送一行（None 表示输入结束），回合结束后再送 then。"""
+
+    def act() -> None:
+        wait_until(lambda: ASK in out.getvalue())
+        if answer is None:
+            lines.end()
+        else:
+            lines.feed(answer)
+        wait_until(lambda: out.getvalue().count(PROMPT) >= 2)
+        lines.feed(then)
+
+    in_thread(act)
+
+
+def test_y_at_the_approval_prompt_lets_the_write_run(
+    make_session: Any, fake_model: FakeModel, tmp_path: Path
+) -> None:
+    """R7.6、R7.7-S1、R7.9-S1：写文件的批准提示显示路径、新建和完整内容；输入 y 之后执行。"""
+    arguments = ask_to_write(fake_model)
+    lines = ScriptedLines()
+    lines.feed("新建 hello.py")
+    out, err = io.StringIO(), io.StringIO()
+    answer_when_asked(lines, out, "y")
+    session: Session = make_session()
+    code = chat(session, lines, out, err, tmp_path)
+    assert (code, err.getvalue()) == (0, "")
+    assert out.getvalue() == (
+        banner(tmp_path)
+        + PROMPT
+        + f"调用 write_file {arguments}\n"
+        + WRITE_PROMPT
+        + "[y/n] 已批准。\n结果：已写入 hello.py，新建文件，1 行\n写好了\n"
+        + PROMPT
+    )
+    assert (tmp_path / "hello.py").read_bytes() == b"print('hello')\n"
+    assert [entry.item.kind for entry in session.read_thread()] == [
+        "turn_start",
+        "user_message",
+        "tool_call",
+        "approval",
+        "tool_result",
+        "model_text",
+        "turn_end",
+    ]
+
+
+def test_input_typed_before_the_prompt_is_not_an_answer(
+    make_session: Any, fake_model: FakeModel, tmp_path: Path
+) -> None:
+    """R13.8、决策 D-20：提示出现之前到达的输入不算对它的回应，按回合中的输入丢弃并计数；
+    想批准，必须在看到提示之后输入。"""
+    ask_to_write(fake_model)
+    lines = QueuedLines()
+    lines.feed("新建 hello.py")
+    lines.feed("y")  # 提示还没出现就到了：不算批准
+    out, err = io.StringIO(), io.StringIO()
+    answer_when_asked(lines, out, "y")
+    session: Session = make_session()
+    code = chat(session, lines, out, err, tmp_path)
+    assert (code, err.getvalue()) == (0, "已忽略 1 行回合中收到的输入。\n")
+    assert out.getvalue().count(WRITE_PROMPT + "[y/n] 已批准。\n") == 1
+    assert (tmp_path / "hello.py").read_bytes() == b"print('hello')\n"
+    assert [entry.item.kind for entry in session.read_thread()].count("user_message") == 1
+
+
+@pytest.mark.parametrize("answer", ["", "n", "yes", "Y", "批准"])
+def test_anything_but_y_at_the_prompt_rejects(
+    make_session: Any, fake_model: FakeModel, tmp_path: Path, answer: str
+) -> None:
+    """R7.9、R7.9-S2、R7.10-S1：只有 y 算批准；空输入、n、别的文字都算拒绝，文件没有被写入。"""
+    arguments = ask_to_write(fake_model)
+    lines = ScriptedLines()
+    lines.feed("新建 hello.py")
+    out, err = io.StringIO(), io.StringIO()
+    answer_when_asked(lines, out, answer)
+    code = chat(make_session(), lines, out, err, tmp_path)
+    assert (code, err.getvalue()) == (0, "")
+    assert out.getvalue() == (
+        banner(tmp_path)
+        + PROMPT
+        + f"调用 write_file {arguments}\n"
+        + WRITE_PROMPT
+        + "[y/n] 已拒绝。\n"
+        + REJECTION
+        + "写好了\n"
+        + PROMPT
+    )
+    assert not (tmp_path / "hello.py").exists()
+
+
+@pytest.mark.parametrize("answer", ["y", "y\r", "  y  "])
+def test_y_with_surrounding_space_or_a_carriage_return_is_still_y(
+    make_session: Any, fake_model: FakeModel, tmp_path: Path, answer: str
+) -> None:
+    """去掉首尾空白之后恰好是 y 就算批准：Windows 控制台的行尾带着回车。"""
+    ask_to_write(fake_model)
+    lines = ScriptedLines()
+    lines.feed("新建 hello.py")
+    out, err = io.StringIO(), io.StringIO()
+    answer_when_asked(lines, out, answer)
+    code = chat(make_session(), lines, out, err, tmp_path)
+    assert (code, err.getvalue()) == (0, "")
+    assert "[y/n] 已批准。\n" in out.getvalue()
+    assert (tmp_path / "hello.py").read_bytes() == b"print('hello')\n"
+
+
+def test_input_end_at_the_approval_prompt_rejects(
+    make_session: Any, fake_model: FakeModel, tmp_path: Path
+) -> None:
+    """R7.9、R13.13 的边界：批准提示处的输入结束按拒绝处理；
+    随后回到输入提示，输入结束，以 0 退出。"""
+    arguments = ask_to_write(fake_model)
+    lines = ScriptedLines()
+    lines.feed("新建 hello.py")
+    out, err = io.StringIO(), io.StringIO()
+    answer_when_asked(lines, out, None)
+    code = chat(make_session(), lines, out, err, tmp_path)
+    assert (code, err.getvalue()) == (0, "")
+    assert out.getvalue() == (
+        banner(tmp_path)
+        + PROMPT
+        + f"调用 write_file {arguments}\n"
+        + WRITE_PROMPT
+        + "[y/n] 已拒绝。\n"
+        + REJECTION
+        + "写好了\n"
+        + PROMPT
+    )
+    assert not (tmp_path / "hello.py").exists()
+
+
+def test_unreadable_input_at_the_approval_prompt_rejects(
+    make_session: Any, fake_model: FakeModel, tmp_path: Path
+) -> None:
+    """R7.9：批准提示处读不到输入，就没有批准；随后输入提示处读不下去，以 1 结束。"""
+    arguments = ask_to_write(fake_model)
+    lines = StdinLines(BreakingStream("新建 hello.py\n"))
+    lines.start()
+    out, err = io.StringIO(), io.StringIO()
+    code = chat(make_session(), lines, out, err, tmp_path)
+    assert (code, err.getvalue()) == (1, "标准输入无法读取，会话结束。\n")
+    assert out.getvalue() == (
+        banner(tmp_path)
+        + PROMPT
+        + f"调用 write_file {arguments}\n"
+        + WRITE_PROMPT
+        + "[y/n] 已拒绝。\n"
+        + REJECTION
+        + "写好了\n"
+        + PROMPT
+    )
+    assert not (tmp_path / "hello.py").exists()

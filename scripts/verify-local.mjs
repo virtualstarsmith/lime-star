@@ -64,6 +64,13 @@ const TASKS = [
     prefixes: ['src/', 'tests/', 'pyproject.toml', 'uv.lock'],
     cmd: 'uv run pytest -q',
   },
+  // Gate B 冒烟（路线图 P4 接入）：在真实进程里跑 MVP 主场景，断言对着会话记录和磁盘。
+  // 模型为回放夹具，不联网，也不需要密钥。产品代码、冒烟脚本、驱动它的测试工具或夹具变动时才需要重跑。
+  {
+    name: 'smoke:gate-b',
+    prefixes: ['src/lime_star/', 'scripts/smoke/', 'tests/integration/', 'tests/fixtures/provider/'],
+    cmd: 'uv run python scripts/smoke/agent_gate_b.py',
+  },
   // 治理脚本的回归用例（路线图 P1 接入）：改了 scripts/ 就要验证脚本的行为，不只是查格式。
   {
     name: 'test:guards',

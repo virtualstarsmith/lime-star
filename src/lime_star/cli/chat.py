@@ -1,7 +1,8 @@
-"""会话的终端交互：横幅、输入提示、把会话记录投影到终端、Ctrl+C 与输入结束（需求 R13）。
+"""会话的终端交互：横幅、输入提示、把会话记录投影到终端、批准提示、Ctrl+C 与输入结束（需求 R13）。
 
 终端上关于一个回合的每一行都来自会话记录：一项落盘后，project 把它显示出来。这里不留状态，
-也不自己拼第二份会话真相。
+也不自己拼第二份会话真相。批准提示本身不是记录，它是向用户提的问题：说明由工具边界给出，
+这里把它显示出来、读一行输入，再把决定交回 app 回合入口（R7.6 到 R7.9）。
 """
 
 import queue
@@ -17,6 +18,7 @@ from lime_star.protocol import (
     Entry,
     ModelText,
     Outcome,
+    Pending,
     Reasoning,
     ToolCall,
     ToolResult,
@@ -29,6 +31,10 @@ EXIT_OK = 0
 EXIT_RUNTIME = 1
 
 PROMPT = "你> "
+ASK = "[y/n] "
+"""批准提示末尾的标记（决策 D-05）：界面文案是中文，给脚本识别的标记用 ASCII。"""
+APPROVE = "y"
+"""只有这一行输入算批准；别的输入、空输入、输入结束都算拒绝（R7.9，决策 D-20）。"""
 EXIT_COMMAND = "/exit"
 
 # 取输入时按这个切片反复等，理由同 model_provider 里的等待：
@@ -65,6 +71,7 @@ class StdinLines:
     """由后台线程持续读标准输入，行进入队列，主线程决定何时取用。
 
     回合进行中到达的行留在队列里，回合结束时由 drain 丢弃（R13.8、R13.9，决策 D-06）。
+    批准提示出现之前到达的行也一样，在显示提示之前就丢掉：没有看到提示就给出的回答不算批准。
     输入结束或读不下去是永久状态：第一次看到之后，再取输入立刻给出同样的结果，不会一直等。
 
     读取经由传入的文本流进行（生产里是 sys.stdin），实例也一直持有它。进程收尾时，解释器
@@ -147,11 +154,27 @@ def chat(session: Session, lines: LineSource, out: TextIO, err: TextIO, workdir:
             continue  # R13.3：空行被忽略
         if text == EXIT_COMMAND:
             return EXIT_OK  # R13.4
+        dropped = 0
+
+        def ask(pending: Pending) -> None:
+            """向用户发起一次批准：显示说明，读一行，把决定交回 app（R7.6 到 R7.9）。"""
+            nonlocal dropped
+            # 提示出现之前到达的输入不是对它的回应：按回合中的输入丢弃（R13.8）。
+            dropped += lines.drain()
+            _say(out, pending.note + "\n")
+            _say(out, ASK)
+            try:
+                answer = lines.next_line()
+            except InputError:
+                answer = None  # 读不到输入就没有批准
+            granted = answer is not None and answer.strip() == APPROVE
+            session.respond_action(pending.call_id, "approved" if granted else "rejected")
+
         try:
-            session.start_turn(text, show=lambda entry: project(entry, out, err))
+            session.start_turn(text, show=lambda entry: project(entry, out, err), ask=ask)
         except KeyboardInterrupt:
             continue  # 兜底：回合里的中断已经处理，回到输入提示（R13.11）
-        ignored = lines.drain()
+        ignored = dropped + lines.drain()
         if ignored:
             _say(err, f"已忽略 {ignored} 行回合中收到的输入。\n")
 
@@ -169,9 +192,11 @@ def project(entry: Entry, out: TextIO, err: TextIO) -> None:
         case ToolResult():
             summary = entry.item.summary or entry.item.content.split("\n")[0]
             _say(out, f"结果出错：{summary}\n" if entry.item.error else f"结果：{summary}\n")
+        case Approval():
+            _say(out, "已批准。\n" if entry.item.decision == "approved" else "已拒绝。\n")
         case TurnEnd():
             _ending(entry.item, out, err)
-        case UserMessage() | Reasoning() | TurnStart() | Approval():
+        case UserMessage() | Reasoning() | TurnStart():
             pass
         case _:
             assert_never(entry.item)

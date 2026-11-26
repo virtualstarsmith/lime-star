@@ -2,17 +2,20 @@
 
 循环是纯核心：不联网，不导入模型客户端、工具实现或存储。外界只通过 protocol 里的三个接口进来
 （模型、工具集、会话记录），由 app 回合入口装配。依赖方向有守卫，守卫在
-tests/integration/test_guard_architecture.py。
+tests/integration/test_guard_architecture.py。危险操作要等用户批准，循环不知道这件事：
+它发生在工具边界的 execute 里面，批准项由 app 回合入口写进同一份会话记录。
 
 一步一物化：一次模型响应先落成项并写进记录，再执行其中的工具调用；
 一次响应里的工具全部执行完、结果都写回之后，才发起下一次请求。
 
 回合以回合开始项开头，以回合结局项收尾（R12.7）。结局有四种：完成、步数上限（R12.3）、
 模型出错（R12.4）、用户取消（R12.5）。模型请求失败结束回合，不重试；
-工具出错、未知工具、参数不合法都作为工具结果交回模型，回合继续（R12.2）。
+工具出错、未知工具、参数不合法、被用户拒绝，都作为工具结果交回模型，回合继续（R12.2、R7.13）。
 
 没有执行的调用也有一条出错的结果：取消时被中断的调用和它后面的调用，达到步数上限时
 最后一次响应里的调用。这样记录里每次调用都有且只有一条结果，发给模型的对话才是完整的。
+执行到一半被 Ctrl+C 打断的工具会带着它截至那一刻的结果回来（Halted），循环如实记下，
+不把它说成"没有执行"。
 
 参考 lime 仓库 lime-rs/crates/agent-runtime/src/reply_loop.rs 的纯状态机做法，以及同目录
 provider_turn.rs 文件头写明的一步一物化约定。只取思路，按本仓库语境实现，没有复制原文。
@@ -22,6 +25,7 @@ from collections.abc import Sequence
 
 from lime_star.protocol import (
     Entry,
+    Halted,
     Item,
     Journal,
     Model,
@@ -59,8 +63,8 @@ def run_turn(
 ) -> TurnResult:
     """跑完一个回合并返回它的结局：写下回合开始项，循环到模型不再调用工具，写下回合结局项。
 
-    history 是这个回合之前的全部项，不会被改动。等待模型或执行工具时按 Ctrl+C，回合以取消结束：
-    已经写进记录的项留着，后面的工具调用不再执行，各有一条"没有执行"的结果。
+    history 是这个回合之前的全部项，不会被改动。等待模型、等待批准或执行工具时按 Ctrl+C，
+    回合以取消结束：已经写进记录的项留着，后面的工具调用不再执行，各有一条"没有执行"的结果。
     """
     seen: list[Entry] = [*history]
 
@@ -93,6 +97,12 @@ def run_turn(
             for index, call in enumerate(answer.calls):
                 try:
                     result = tools.execute(call)
+                except Halted as halted:
+                    # 它执行到一半被打断，带回了自己的结果：如实记下。后面的调用没有开始。
+                    write(_halted(call, halted))
+                    for skipped in answer.calls[index + 1 :]:
+                        write(_not_run(skipped, NOT_RUN_CANCELLED))
+                    raise
                 except KeyboardInterrupt:
                     # 被中断的调用没有完成，它后面的调用没有开始。
                     for skipped in answer.calls[index:]:
@@ -116,3 +126,8 @@ def _items_of(answer: ModelReply) -> list[Item]:
 
 def _not_run(call: ToolCall, reason: str) -> ToolResult:
     return ToolResult(call.call_id, reason, error=True, summary=reason)
+
+
+def _halted(call: ToolCall, halted: Halted) -> ToolResult:
+    """被打断的工具的结果：它带回来的内容交给模型，摘要留给终端。"""
+    return ToolResult(call.call_id, halted.text, True, halted.summary or halted.text.split("\n")[0])

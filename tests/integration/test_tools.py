@@ -1,7 +1,9 @@
 """read_file 经 app 回合入口被模型调用（R5.1 到 R5.3）。
 
-证据等级：入口集成。模型是本地替身服务，响应是手写的。read_file 经 open_session 的 tools 参数注册，
-正式命令在路线图 P2 不向模型提供任何工具。read_file 自身的细节由 tests/unit/test_read_file.py 守。
+证据等级：入口集成。模型是本地替身服务，响应是手写的。
+这里经 open_session 的 tools 参数只注册 read_file，
+与正式命令的默认工具集无关。read_file 自身的细节由 tests/unit/test_read_file.py 守。
+其余三个工具和审批在 test_run_command.py、test_approval.py。
 """
 
 from pathlib import Path

@@ -8,6 +8,7 @@ P0 的用例覆盖 R1.1 到 R1.3。P1 的用例通过管道驱动一个真实的
 覆盖 R3.1、R3.2-S1、R4.1-S1、R4.2-S1、R4.3-S1、R4.3-S2、R13.1-S1、R13.2-S1、
 R13.3-S1、R13.4-S1、R13.5、R13.6-S1、R13.7-S1、R13.8-S1、R13.9-S1、R13.10、R13.13-S1。
 路线图 P2 加入 R12.3：达到步数上限时的终端说明。
+路线图 P4 加入批准提示：R7.6 到 R7.11、R7.13 里真实进程的部分。断言同时看终端输出和会话记录文件。
 """
 
 import json
@@ -25,6 +26,7 @@ from tests.integration.support import (
     child_env,
     read_log,
     run_lime_star,
+    transcript_file,
 )
 
 
@@ -393,3 +395,197 @@ def test_a_tool_call_is_shown_in_a_real_process(
         "model_text",
         "turn_end",
     ]
+
+
+ASK = "[y/n] "
+REJECTION = "结果出错：用户拒绝了这次操作，没有执行。\n"
+HELLO = "print('hello')\n"
+WRITE_HELLO = json.dumps({"path": "hello.py", "content": HELLO})
+TASK = "新建一个脚本 hello.py，打印 hello，然后运行它"
+
+
+def recorded(workdir: Path) -> list[dict[str, object]]:
+    """工作目录里那份会话记录的项，按写入顺序。"""
+    raw = transcript_file(workdir).read_bytes()
+    return [json.loads(line) for line in raw.split(b"\n")[:-1]]
+
+
+def write_prompt(path: str, content: str, state: str = "新建文件") -> str:
+    """期望的写文件批准提示。"""
+    body = content if content.endswith("\n") else content + "\n"
+    return (
+        f"请求批准 write_file：写入 {path}（{state}）。要写入的内容：\n"
+        f"{body}----- 内容结束，共 1 行 -----\n"
+    )
+
+
+def test_the_mvp_task_runs_in_a_real_process_with_two_approvals(
+    start_cli: Callable[..., CliProcess],
+    model_env: dict[str, str],
+    fake_model: FakeModel,
+    tmp_path: Path,
+    log_path: Path,
+) -> None:
+    """R7.6、R7.7-S1、R7.8-S1：真实进程里写文件和执行命令各出现一次批准提示，输入 y 之后才执行；
+    会话记录里调用、批准、结果依次落盘，命令输出在记录里（决策 D-08：终端只有一行摘要）。"""
+    command = "python hello.py"
+    fake_model.call(("write_file", WRITE_HELLO))
+    fake_model.call(("run_command", {"command": command}))
+    fake_model.reply("脚本运行成功，输出 hello。")
+    process = start_cli(model_env)
+    process.wait_for("stdout", PROMPT)
+    process.send(TASK)
+    process.wait_for("stdout", ASK)
+    assert not (tmp_path / "hello.py").exists()  # 用户还没有回应：没有写
+    process.send("y")
+    process.wait_for("stdout", "已批准。\n")
+    process.wait_for("stdout", ASK, count=2)
+    process.send("y")
+    process.wait_for("stdout", "已批准。\n", count=2)
+    process.wait_for("stdout", PROMPT, count=2)
+    process.send("/exit")
+    assert process.finish() == 0
+    assert process.output("stderr") == ""
+    banner = process.output("stdout").split("\n", 1)[0] + "\n"
+    command_prompt = f"请求批准 run_command：在工作目录里执行下面的命令：\n{command}\n"
+    assert process.output("stdout") == (
+        banner
+        + PROMPT
+        + f"调用 write_file {WRITE_HELLO}\n"
+        + write_prompt("hello.py", HELLO)
+        + "[y/n] 已批准。\n结果：已写入 hello.py，新建文件，1 行\n"
+        + f"调用 run_command {json.dumps({'command': command})}\n"
+        + command_prompt
+        + "[y/n] 已批准。\n结果：退出码 0\n"
+        + "脚本运行成功，输出 hello。\n"
+        + PROMPT
+    )
+    assert (tmp_path / "hello.py").read_bytes() == HELLO.encode("utf-8")
+    entries = recorded(tmp_path)
+    assert [entry["type"] for entry in entries] == [
+        "turn_start",
+        "user_message",
+        "tool_call",
+        "approval",
+        "tool_result",
+        "tool_call",
+        "approval",
+        "tool_result",
+        "model_text",
+        "turn_end",
+    ]
+    approvals = [entry["decision"] for entry in entries if entry["type"] == "approval"]
+    assert approvals == ["approved", "approved"]
+    results = [entry["content"] for entry in entries if entry["type"] == "tool_result"]
+    assert results == ["已写入 hello.py（新建文件，1 行）。", "退出码：0\nhello"]
+    assert [record["status"] for record in read_log(log_path)] == ["ok"] * 3
+
+
+def test_n_at_the_prompt_leaves_the_file_unwritten(
+    start_cli: Callable[..., CliProcess],
+    model_env: dict[str, str],
+    fake_model: FakeModel,
+    tmp_path: Path,
+) -> None:
+    """R7.9、R7.10-S1、R7.12、R7.13：真实进程里输入 n，文件没有被写入，终端和会话记录里都有拒绝，
+    模型收到拒绝的结果后给出了最终回复。"""
+    fake_model.call(("write_file", WRITE_HELLO))
+    fake_model.reply("好的，我没有写入 hello.py。")
+    process = start_cli(model_env)
+    process.wait_for("stdout", PROMPT)
+    process.send("新建 hello.py")
+    process.wait_for("stdout", ASK)
+    process.send("n")
+    process.wait_for("stdout", PROMPT, count=2)
+    process.send("/exit")
+    assert process.finish() == 0
+    assert not (tmp_path / "hello.py").exists()
+    banner = process.output("stdout").split("\n", 1)[0] + "\n"
+    assert process.output("stdout") == (
+        banner
+        + PROMPT
+        + f"调用 write_file {WRITE_HELLO}\n"
+        + write_prompt("hello.py", HELLO)
+        + "[y/n] 已拒绝。\n"
+        + REJECTION
+        + "好的，我没有写入 hello.py。\n"
+        + PROMPT
+    )
+    assert process.output("stderr") == ""
+    entries = recorded(tmp_path)
+    assert [(entry["type"], entry.get("decision")) for entry in entries] == [
+        ("turn_start", None),
+        ("user_message", None),
+        ("tool_call", None),
+        ("approval", "rejected"),
+        ("tool_result", None),
+        ("model_text", None),
+        ("turn_end", None),
+    ]
+    assert entries[4]["content"] == "用户拒绝了这次操作，没有执行。"
+
+
+def test_input_end_at_the_prompt_in_a_real_process_rejects(
+    start_cli: Callable[..., CliProcess],
+    model_env: dict[str, str],
+    fake_model: FakeModel,
+    tmp_path: Path,
+) -> None:
+    """R7.9、R13.13 的边界：批准提示处的输入结束按拒绝处理；
+    随后在输入提示处读到输入结束，以 0 退出。"""
+    fake_model.call(("write_file", WRITE_HELLO))
+    fake_model.reply("没有写入。")
+    process = start_cli(model_env)
+    process.wait_for("stdout", PROMPT)
+    process.send("新建 hello.py")
+    process.wait_for("stdout", ASK)
+    process.close_input()
+    assert process.finish() == 0
+    assert not (tmp_path / "hello.py").exists()
+    assert process.output("stdout").endswith(
+        "[y/n] 已拒绝。\n" + REJECTION + "没有写入。\n" + PROMPT
+    )
+    [approval] = [entry for entry in recorded(tmp_path) if entry["type"] == "approval"]
+    assert approval["decision"] == "rejected"
+
+
+def test_two_prompts_in_one_turn_are_decided_separately_in_a_real_process(
+    start_cli: Callable[..., CliProcess],
+    model_env: dict[str, str],
+    fake_model: FakeModel,
+    tmp_path: Path,
+) -> None:
+    """R7.11-S1：模型一次请求写两个文件，真实进程里出现两次批准提示；第一次拒绝，第二次仍然提示并执行。"""
+    fake_model.call(
+        ("write_file", '{"path": "a.txt", "content": "A"}'),
+        ("write_file", '{"path": "b.txt", "content": "B"}'),
+    )
+    fake_model.reply("做完了")
+    process = start_cli(model_env)
+    process.wait_for("stdout", PROMPT)
+    process.send("写两个文件")
+    process.wait_for("stdout", ASK)
+    process.send("n")
+    process.wait_for("stdout", ASK, count=2)
+    process.send("y")
+    process.wait_for("stdout", PROMPT, count=2)
+    process.send("/exit")
+    assert process.finish() == 0
+    assert not (tmp_path / "a.txt").exists()
+    assert (tmp_path / "b.txt").read_bytes() == b"B"
+    banner = process.output("stdout").split("\n", 1)[0] + "\n"
+    assert process.output("stdout") == (
+        banner
+        + PROMPT
+        + '调用 write_file {"path": "a.txt", "content": "A"}\n'
+        + '调用 write_file {"path": "b.txt", "content": "B"}\n'
+        + write_prompt("a.txt", "A")
+        + "[y/n] 已拒绝。\n"
+        + REJECTION
+        + write_prompt("b.txt", "B")
+        + "[y/n] 已批准。\n结果：已写入 b.txt，新建文件，1 行\n"
+        + "做完了\n"
+        + PROMPT
+    )
+    approvals = [entry["decision"] for entry in recorded(tmp_path) if entry["type"] == "approval"]
+    assert approvals == ["rejected", "approved"]

@@ -1,33 +1,85 @@
-"""Current fixture：用录制的真实响应驱动完整主链（需求 R11.1、R12.1、R11.6）。
+"""
+Current fixture：用录制的真实响应驱动完整主链（需求 R11.1、R12.1、R11.6）。
 
-证据等级：Current fixture。模型是回放夹具：响应录自真实模型的一次会话，这里不联网。
+证据等级：Current fixture。模型是回放夹具：响应录自真实模型的一次会话，这里不联网，
 所以它证明的不是"真实模型现在会这样回答"，而是"真实形状的响应能走通主链"。
+两份夹具：read_file（P3 录制）和 mvp（P4 录制，三个回合：主场景、拒绝写文件、失败的命令）。
 """
 
+import json
+import re
+import socket
 from pathlib import Path
+from typing import Any
 
-from lime_star.app import Outcome, open_session
+import pytest
+
+from lime_star.app import Session, open_session
 from lime_star.model_provider import API_KEY_VAR, BASE_URL_VAR, MODEL_VAR
-from lime_star.protocol import ToolCall, ToolResult
+from lime_star.protocol import Approval, Decision, Pending, ToolCall, ToolResult
 from tests.integration.fake_model import FAKE_KEY
-from tests.integration.replay import BASE_URL, Replay, load, recorded_bodies
+from tests.integration.replay import BASE_URL, Replay, load, recorded_bodies, turns
 
 ROOT = Path(__file__).resolve().parents[2]
 PRODUCT = ROOT / "src" / "lime_star"
 
 
+def _refuse(_self: socket.socket, address: object) -> None:
+    raise AssertionError(f"场景：回放不联网，却连接了 {address!r}")
+
+
+@pytest.fixture(autouse=True)
+def offline(monkeypatch: pytest.MonkeyPatch) -> None:
+    """运行前禁用全部 socket：回放不联网。"""
+    monkeypatch.setattr(socket.socket, "connect", _refuse)
+
+
+def stage(fixture: dict[str, Any], workdir: Path) -> None:
+    """照夹具在工作目录里放上录制时有的文件。"""
+    for name, content in fixture["workdir"].items():
+        path = workdir / str(name)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(str(content), encoding="utf-8")
+
+
+def play(session: Session, fixture: dict[str, Any]) -> list[Decision]:
+    """按夹具逐个回合地驱动会话，批准按录制时的做法交回。返回交回的决定。"""
+    decisions: list[Decision] = []
+    for turn in turns(fixture):
+        policy: Decision = turn["policy"]
+
+        def ask(pending: Pending, decision: Decision = policy) -> None:
+            decisions.append(decision)
+            session.respond_action(pending.call_id, decision)
+
+        result = session.start_turn(turn["message"], ask=ask)
+        assert result.outcome.value == turn["outcome"], (turn["message"], result.reason)
+    return decisions
+
+
+def assert_same_as_recorded(fixture: dict[str, Any], replay: Replay) -> None:
+    """回放时发给模型的内容与录制时逐项相同（系统指令除外）。"""
+    recorded = recorded_bodies(fixture)
+    assert [sent["model"] for sent in replay.sent] == [body["model"] for body in recorded]
+    assert [sent["messages"][1:] for sent in replay.sent] == [
+        body["messages"][1:] for body in recorded
+    ]
+    assert all(body["messages"][0]["role"] == "system" for body in recorded)
+
+
 def test_the_recorded_read_file_exchange_drives_the_whole_chain(tmp_path: Path) -> None:
     """R11.1-S1、R12.1：回放录下的响应，不联网也走完"模型请求工具、执行、回填、再请求、结束"。"""
-    fixture = load("read_file")
-    for name, content in fixture["workdir"].items():
-        path = tmp_path / name
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(content, encoding="utf-8")
+    fixture: dict[str, Any] = load("read_file")
+    stage(fixture, tmp_path)
     replay = Replay(fixture)
-    env = {BASE_URL_VAR: BASE_URL, API_KEY_VAR: FAKE_KEY, MODEL_VAR: fixture["model"]}
+    env = {
+        BASE_URL_VAR: BASE_URL,
+        API_KEY_VAR: FAKE_KEY,
+        MODEL_VAR: str(fixture["model"]),
+    }
     session = open_session(env=env, workdir=tmp_path, client=replay.client())
-    result = session.start_turn(fixture["message"])
-    assert result.outcome is Outcome.DONE, result.reason
+    decisions = play(session, fixture)
+    assert decisions == []
     items = [entry.item for entry in session.read_thread()]
     kinds = [item.kind for item in items]
     assert kinds[:2] == ["turn_start", "user_message"]
@@ -37,13 +89,8 @@ def test_the_recorded_read_file_exchange_drives_the_whole_chain(tmp_path: Path) 
     found = next(item for item in items if isinstance(item, ToolResult))
     assert call.name == "read_file"
     assert items.index(call) < items.index(found) < kinds.index("turn_end")
-    # 回放时发给模型的内容与录制时逐项相同（系统指令除外）：真实工具读出的内容也一样。
-    recorded = recorded_bodies(fixture)
-    assert [sent["model"] for sent in replay.sent] == [body["model"] for body in recorded]
-    assert [sent["messages"][1:] for sent in replay.sent] == [
-        body["messages"][1:] for body in recorded
-    ]
-    assert all(body["messages"][0]["role"] == "system" for body in recorded)
+    # 真实工具读出的内容也一样，所以发给模型的第二次请求与录制时相同。
+    assert_same_as_recorded(fixture, replay)
     assert replay.sent[0]["tools"][0]["function"]["name"] == "read_file"
 
 
@@ -55,3 +102,65 @@ def test_the_product_has_no_replay_switch() -> None:
         if "replay" in (text := path.read_text(encoding="utf-8").lower()) or "fixture" in text
     ]
     assert offenders == []
+
+
+DANGEROUS = ("write_file", "run_command")
+CLAIM = re.compile(
+    r"(已经?|成功)(?:为您|帮你)?(?:在\S{0,12}?)?(?:写入|创建|新建|保存)|(?:写入|创建|新建|保存)成功"
+)
+"""把操作说成已完成的说法。中间可以夹一个地点短语，例如"已在工作目录新建"。"""
+
+
+def test_the_recorded_mvp_exchange_drives_three_turns(tmp_path: Path) -> None:
+    """R11.1-S1、R7.6、R7.10-S1、R7.13：录制的 MVP 场景三个回合不联网走完整主链。
+    写文件和运行脚本经批准才执行；被拒绝的写入没有发生，拒绝作为工具结果交回模型后回合继续；
+    失败的命令以退出码 1 交回。模型为回放夹具。"""
+    fixture: dict[str, Any] = load("mvp")
+    stage(fixture, tmp_path)
+    replay = Replay(fixture)
+    env = {
+        BASE_URL_VAR: BASE_URL,
+        API_KEY_VAR: FAKE_KEY,
+        MODEL_VAR: str(fixture["model"]),
+    }
+    session = open_session(env=env, workdir=tmp_path, client=replay.client())
+    decisions = play(session, fixture)
+    assert decisions == [decision for turn in turns(fixture) for decision in turn["decisions"]]
+    assert decisions == ["approved", "approved", "rejected", "approved"]
+    items = [entry.item for entry in session.read_thread()]
+    kinds = [item.kind for item in items]
+    # 三个回合各有开始和结局，中间是四次危险调用，每次的批准项和结果都指向它。
+    assert kinds.count("turn_start") == kinds.count("turn_end") == 3
+    assert (kinds[:2], kinds[-1]) == (["turn_start", "user_message"], "turn_end")
+    assert [item.decision for item in items if isinstance(item, Approval)] == decisions
+    for index, item in enumerate(items):
+        if isinstance(item, ToolCall) and item.name in DANGEROUS:
+            approval, result = items[index + 1], items[index + 2]
+            assert isinstance(approval, Approval) and approval.call_id == item.call_id
+            assert isinstance(result, ToolResult) and result.call_id == item.call_id
+            if approval.decision == "rejected":
+                assert result.content == "用户拒绝了这次操作，没有执行。"
+    writes = [item for item in items if isinstance(item, ToolCall) and item.name == "write_file"]
+    content = json.loads(writes[0].arguments)["content"]
+    assert json.loads(writes[0].arguments)["path"] == "hello.py"
+    assert (tmp_path / "hello.py").read_bytes() == content.encode("utf-8")
+    assert not (tmp_path / "bye.py").exists()
+    # 真实的工具执行产生的内容与录制时相同，所以发给模型的每一次请求都与录制时相同。
+    assert_same_as_recorded(fixture, replay)
+
+
+def test_the_recorded_replies_follow_the_report_rules() -> None:
+    """R14.1-S1、R14.2-S1：录制时真实模型（glm-5.2，2026-11-26）的最终回复。被拒绝的写入没有被说成已完成；
+    以退出码 1 结束的命令被指出失败了。这里核对的是录下来的回复，不是现在再问一次模型；
+    现在的模型怎样回答，由冒烟脚本的 --live 去看。"""
+    fixture: dict[str, Any] = load("mvp")
+    replies = [
+        exchange["response"]["body"]["choices"][0]["message"]["content"]
+        for turn in turns(fixture)
+        for exchange in turn["exchanges"][-1:]
+    ]
+    assert len(replies) == 3
+    assert CLAIM.search(replies[0]) and "hello" in replies[0] and "0" in replies[0]
+    assert not CLAIM.search(replies[1]), replies[1]
+    assert "拒绝" in replies[1]
+    assert "失败" in replies[2] and "退出码" in replies[2] and "1" in replies[2]

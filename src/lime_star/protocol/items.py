@@ -74,15 +74,37 @@ class ToolResult:
     summary: str = ""
 
 
+Decision = Literal["approved", "rejected"]
+"""用户对一次危险操作的回应，只有这两种。"""
+
+
 @dataclass(frozen=True)
 class Approval:
-    """用户对一次危险操作的回应。写出它的流程随路线图 P4 加入，这里先定下形状。"""
+    """用户对一次危险操作的回应（R7.12）。
+
+    决定做出之后、操作执行之前写下，所以它夹在这次工具调用和它的结果之间。
+    等待中被 Ctrl+C 打断的操作没有决定，也就没有这一项。
+    """
 
     kind: ClassVar[str] = "approval"
     call_id: str
     name: str
     arguments: str
-    decision: Literal["approved", "rejected"]
+    decision: Decision
+
+
+@dataclass(frozen=True)
+class Pending:
+    """等待用户决定的一次危险操作（R7.6）。
+
+    note 是工具边界给出的说明，给用户看：批准提示显示它，比如目标路径、新建还是覆盖、
+    全部要写入的内容，或者原样的命令（R7.7、R7.8）。
+    """
+
+    call_id: str
+    name: str
+    arguments: str
+    note: str
 
 
 @dataclass(frozen=True)
@@ -150,6 +172,26 @@ class ToolSet(Protocol):
     def specs(self) -> tuple[ToolSpec, ...]: ...
 
     def execute(self, call: ToolCall) -> ToolResult: ...
+
+
+Approver = Callable[[Pending], bool]
+"""批准来源：工具边界在执行危险操作之前请求一次批准，返回 True 才算批准。
+
+拿不到批准就是拒绝，包括没有人可问的情形。等待期间按 Ctrl+C，中断照常向上传，操作不会执行。
+"""
+
+
+class Halted(KeyboardInterrupt):
+    """工具执行到一半被 Ctrl+C 打断（R12.5）。text 和 summary 是它截至那一刻的结果。
+
+    run_command 用它带回已经产生的输出；循环把它作为这次调用的结果写进会话记录，再以取消结束回合。
+    它也是一次 KeyboardInterrupt，所以谁都没有接住它时，回合照样按取消处理。
+    """
+
+    def __init__(self, text: str, *, summary: str = "") -> None:
+        super().__init__(text)
+        self.text = text
+        self.summary = summary
 
 
 Journal = Callable[[Item, str], Entry]

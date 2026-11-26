@@ -36,6 +36,7 @@ lime-star 是用 Lime 的开发范式练习开发 Agent 的个人项目。Agent 
 5. 默认本地门禁为 `npm run verify:local`（编排器见 `scripts/verify-local.mjs`）。
 6. 凭证只放 `.env` 或环境变量，不得进入代码、文档、测试夹具、transcript 和证据导出。守卫：`node scripts/security/check-secrets.mjs`，检查 `.env` 未被 Git 跟踪、已跟踪文件里没有常见密钥格式。
 7. 任何显示、导出或测试不得自己拼第二份会话真相，只能从会话记录（thread_store 的 transcript）派生。守卫是 Gate A 测试：read_thread 的结果必须与 transcript 一致。
+8. 标记为危险的操作必须经 app 回合入口的 `respond_action` 批准后才能执行；被拒绝的操作不执行，决定写进会话记录。守卫是 Gate B 冒烟 `scripts/smoke/agent_gate_b.py` 里的拒绝路径断言。
 
 ## 执行方式
 

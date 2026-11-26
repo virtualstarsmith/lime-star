@@ -8,3 +8,4 @@
 | CCD-002 | 重大架构变更的确认只有规则，没有守卫 | `../research/lime-paradigm.md` | 首次在 architecture.md 追加 Owner 章节之前，补一个检查确认块的守卫并挂进 verify-local 任务表 | closed（2026-11-24，见 `p2-loop-core-plan.md`） | 2026-11-23 |
 | CCD-003 | 依赖方向与禁止旁路只有规则，没有守卫 | `../research/lime-paradigm.md` | agent_runtime 落地之前，补导入边界守卫（至少覆盖 cli 不得绕过 app）并挂进 verify-local 任务表 | closed（2026-11-24，见 `p2-loop-core-plan.md`） | 2026-11-23 |
 | CCD-004 | 需求文档的写作要求没有守卫脚本，自检靠 Agent 临时脚本或人工 | `../research/agent-prd-practice.md` | 需求确认后，在 scripts 下的领域目录新增需求自检脚本（编号唯一、每条需求有陈述和场景、未决不超过 5 个、路线图引用的编号存在），写明理由后更新冻结基线，并挂进 verify-local 任务表 | open | 2026-11-23 |
+| CCD-005 | 冒烟脚本 scripts/smoke/agent_gate_b.py 不在 mypy 配置的检查范围里，lint 和 typecheck 任务也不随 scripts/ 的改动触发；本轮只手工检查过一次 | `p4-tools-approval-plan.md` 的进度记录 | 把 scripts 加进 pyproject.toml 的 mypy files，把 scripts/smoke/ 加进 verify-local 里 lint 和 typecheck 的触发路径。改 pyproject 会让 uv 重装入口命令，要先结束正在运行的 lime-star 会话 | open | 2026-11-26 |

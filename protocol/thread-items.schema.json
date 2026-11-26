@@ -98,7 +98,7 @@
       "required": ["call_id", "content", "error", "summary"]
     },
     "approval": {
-      "description": "用户对一次危险操作的回应。写出它的流程随路线图 P4 加入。",
+      "description": "用户对一次危险操作的回应。危险操作（write_file、run_command）执行之前，app 回合入口先把用户的决定写成这一项，所以它夹在这次工具调用和它的结果之间。等待中被 Ctrl+C 打断的操作没有决定，也没有这一项。",
       "properties": {
         "type": { "const": "approval" },
         "call_id": { "type": "string" },

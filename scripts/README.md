@@ -14,12 +14,13 @@
 | `check-contracts.mjs` | 契约同步门禁：schema 变更必须同步消费者并显式确认 | `node scripts/check-contracts.mjs [--root <dir>] [--update]` |
 | `check-doc-links.mjs` | 文档交叉引用守卫：规则、计划、手册之间的相对引用不许断链；带目录的引用必须按路径在仓库内找到，只有裸文件名可按文件名全树查找 | `node scripts/check-doc-links.mjs [--root <dir>]` |
 | `scripts/security/check-secrets.mjs` | 密钥守卫：`.env` 必须被 Git 忽略且不被跟踪；已跟踪文件里不得出现常见格式的密钥。报出位置和规则名，不回显密钥 | `node scripts/security/check-secrets.mjs [--root <dir>]` |
+| `scripts/smoke/agent_gate_b.py` | Gate B 冒烟（Python，路线图 P4）：在真实进程里跑 MVP 主场景，对着会话记录和磁盘断言；默认回放录制的夹具，不联网 | `uv run python scripts/smoke/agent_gate_b.py [--live]` |
 
-所有脚本零依赖（Node 18 或更高），必须在**仓库根目录**运行，违规时退出码非 0。
+治理脚本零依赖（Node 18 或更高），必须在**仓库根目录**运行，违规时退出码非零。冒烟脚本是 Python，经 uv 运行，不属于治理脚本。
 
 ## 接入状态
 
-lime-star 已于 2026-11-23 完成接入，记录见 `internal/exec-plans/paradigm-port-plan.md`。当前基线：根文件 6 个（5 个脚本加 README），一级目录 1 个（security，路线图 P1 建立，记录见 `internal/exec-plans/p1-chat-plan.md`）。
+lime-star 已于 2026-11-23 完成接入，记录见 `internal/exec-plans/paradigm-port-plan.md`。当前基线：根文件 6 个（5 个脚本加 README），一级目录 2 个：security（路线图 P1 建立，记录见 `internal/exec-plans/p1-chat-plan.md`）和 smoke（路线图 P4 建立，记录见 `internal/exec-plans/p4-tools-approval-plan.md`）。
 
 三个基线文件都在 `governance/` 下，属于**必须提交**的版本化文件：
 
@@ -29,7 +30,7 @@ lime-star 已于 2026-11-23 完成接入，记录见 `internal/exec-plans/paradi
 
 ## 路线图新增的目录
 
-路线图分阶段新增三个一级目录：security（P1，密钥守卫，已建立）、smoke（P4，Gate B 冒烟）、harness（P6，证据导出与评测）。每次新增都必须在该阶段的执行计划里写明理由，再运行 `node scripts/check-scripts-baseline.mjs --update`。
+路线图分阶段新增三个一级目录：security（P1，密钥守卫，已建立）、smoke（P4，Gate B 冒烟，已建立）、harness（P6，证据导出与评测）。每次新增都必须在该阶段的执行计划里写明理由，再运行 `node scripts/check-scripts-baseline.mjs --update`。
 
 ## 守卫脚本的回归用例
 

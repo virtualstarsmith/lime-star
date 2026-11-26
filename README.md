@@ -24,11 +24,13 @@ uv run lime-star
 
 每个会话有一份会话记录，是工作目录下 `.lime-star/threads/` 里的一个 JSON Lines 文件。用户消息、模型的回复、每次工具调用和它的结果、回合的开始与结局，都按发生顺序写在里面；终端上看到的每一行都来自它。
 
-路线图 P3 起，它可以读取工作目录里的 UTF-8 文本文件；工作目录之外的路径会被拒绝。它还不能写文件或执行命令。输入 `/exit` 退出。
+路线图 P4 起，它可以列出目录、读取工作目录里的 UTF-8 文本文件，也可以写文件和执行命令。文件工具只能访问工作目录里面的路径，越界的会被拒绝。
+
+写文件和执行命令是危险操作：每次执行之前，终端会显示这次要做什么并请求批准，输入 `y` 才执行，别的输入（包括直接回车）都算拒绝。批准和拒绝都会记进会话记录，被拒绝的操作不会执行，模型也不会把它说成已完成。命令不受工作目录的限制，所以批准之前要看清楚命令。命令运行中按 Ctrl+C，会结束它和它的子进程。输入 `/exit` 退出。
 
 ## 本地门禁
 
-需要 Node 18 或更高版本。治理脚本零依赖；Python 任务（lock、lint、typecheck、test:unit、test:guards、architecture）需要 uv，首次运行前先执行一次 `uv sync`。
+需要 Node 18 或更高版本。治理脚本零依赖；Python 任务（lock、lint、typecheck、test:unit、smoke:gate-b、test:guards、architecture）需要 uv，首次运行前先执行一次 `uv sync`。
 
 ```bash
 uv sync                         # 首次运行前：按 uv.lock 建好 .venv
@@ -38,6 +40,18 @@ npm run test:contracts
 ```
 
 Windows PowerShell 如果提示 `npm.ps1` 无法加载（执行策略禁止运行脚本），把 `npm` 换成 `npm.cmd`，或者直接运行对应的 `node scripts/...` 命令。
+
+## 冒烟
+
+Gate B 冒烟在一个真实的 lime-star 进程里跑 MVP 主场景：新建脚本、运行脚本、拒绝一次、运行一条会失败的命令。它对着会话记录和磁盘逐项断言，不看模型自报。
+
+```bash
+uv run python scripts/smoke/agent_gate_b.py           # 默认回放录制的夹具，不联网，不需要密钥
+uv run python scripts/smoke/agent_gate_b.py --live    # 用 .env 或环境变量里的真实模型，消耗额度
+```
+
+退出码 0 表示全部检查通过。本地门禁的 smoke:gate-b 任务跑的是前一种。
+
 
 ## 许可
 

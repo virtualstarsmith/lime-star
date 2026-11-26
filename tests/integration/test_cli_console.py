@@ -4,10 +4,12 @@
 由同一控制台里的宿主进程（console_host.py）投递按键和 Ctrl+C 事件。
 证据等级：Gate B，进程的输入输出是真实控制台；模型是测试替身。
 覆盖 R13.8-S1、R13.9-S1、R13.11-S1、R13.12-S1、R12.5-S2、R12.6-S1。
+路线图 P4 加入 R7.9-S1（在控制台上输入 y）和 R12.5-S1（命令运行中的 Ctrl+C 结束整棵进程树）。
 管道驱动的用例补不到这里的 Ctrl+C：它必须是一次真实的控制台事件。
 """
 
 import ctypes
+import json
 import os
 import subprocess
 import sys
@@ -21,8 +23,17 @@ from typing import Any
 import pytest
 
 from lime_star import __version__
+from lime_star.cli.chat import ASK
 from tests.integration.fake_model import FAKE_KEY, FakeModel, Hold
-from tests.integration.support import PROMPT, child_env, wait_for_log
+from tests.integration.support import (
+    PROMPT,
+    SLEEPER,
+    alive,
+    child_env,
+    transcript_file,
+    wait_for_log,
+    wait_until,
+)
 
 HOST = Path(__file__).with_name("console_host.py")
 SYNCHRONIZE = 0x00100000
@@ -321,3 +332,89 @@ def test_closing_a_stuck_session_ends_the_process(
     fake_model.wait_for_requests(1)
     session.close()
     hold.release()
+
+
+def test_y_typed_on_the_console_approves_a_write(
+    start_console: Callable[..., ConsoleSession],
+    model_env: dict[str, str],
+    fake_model: FakeModel,
+    tmp_path: Path,
+) -> None:
+    """R7.9-S1、R13.6：在真实控制台上对着批准提示输入 y，写文件执行；中文的提示和内容不乱码。"""
+    content = "print('你好')\n"
+    write = json.dumps({"path": "hello.py", "content": content}, ensure_ascii=False)
+    fake_model.call(("write_file", write))
+    fake_model.reply("写好了")
+    session = start_console(model_env)
+    session.wait_for("stdout", PROMPT)
+    session.type("新建 hello.py")
+    session.wait_for("stdout", ASK)
+    session.type("y")
+    session.wait_for("stdout", PROMPT, count=2)
+    session.type("/exit")
+    assert session.finish() == 0
+    assert (tmp_path / "hello.py").read_bytes() == content.encode("utf-8")
+    assert session.output("stdout") == (
+        session.banner()
+        + PROMPT
+        + f"调用 write_file {write}\n"
+        + "请求批准 write_file：写入 hello.py（新建文件）。要写入的内容：\n"
+        + f"{content}----- 内容结束，共 1 行 -----\n"
+        + "[y/n] 已批准。\n结果：已写入 hello.py，新建文件，1 行\n"
+        + "写好了\n"
+        + PROMPT
+    )
+    assert session.output("stderr") == ""
+    assert FAKE_KEY not in session.output("stdout") + session.output("stderr")
+
+
+def test_ctrl_c_while_a_command_runs_ends_the_whole_process_tree(
+    start_console: Callable[..., ConsoleSession],
+    model_env: dict[str, str],
+    fake_model: FakeModel,
+    tmp_path: Path,
+) -> None:
+    """R12.5-S1：命令运行中按真实的 Ctrl+C，命令进程及其子进程都结束，终端显示已取消；
+    已经产生的输出如实记进了会话记录。"""
+    (tmp_path / "sleeper.py").write_text(SLEEPER, encoding="utf-8")
+    command = "python sleeper.py"
+    fake_model.call(("run_command", {"command": command}))
+    session = start_console(model_env)
+    session.wait_for("stdout", PROMPT)
+    session.type("运行 sleeper.py")
+    session.wait_for("stdout", ASK)
+    session.type("y")
+    session.wait_for("stdout", "已批准。\n")
+    wait_until(lambda: (tmp_path / "pids.txt").exists())
+    pressed = time.monotonic()
+    session.ctrl_c()
+    session.wait_for("stdout", "已取消。\n" + PROMPT)
+    assert time.monotonic() - pressed < 5, "Ctrl+C 之后 5 秒内回合应当已经取消"
+    parent, child = map(int, (tmp_path / "pids.txt").read_text().split())
+    wait_until(lambda: not (alive(parent) or alive(child)))
+    session.type("/exit")
+    assert session.finish() == 0
+    assert session.output("stdout") == (
+        session.banner()
+        + PROMPT
+        + f"调用 run_command {json.dumps({'command': command})}\n"
+        + f"请求批准 run_command：在工作目录里执行下面的命令：\n{command}\n"
+        + "[y/n] 已批准。\n结果出错：已取消，命令已终止\n"
+        + "已取消。\n"
+        + PROMPT
+    )
+    assert session.output("stderr") == ""
+    raw = transcript_file(tmp_path).read_bytes()
+    entries = [json.loads(line) for line in raw.split(b"\n")[:-1]]
+    assert [(entry["type"], entry.get("decision"), entry.get("outcome")) for entry in entries] == [
+        ("turn_start", None, None),
+        ("user_message", None, None),
+        ("tool_call", None, None),
+        ("approval", "approved", None),
+        ("tool_result", None, None),
+        ("turn_end", None, "cancelled"),
+    ]
+    assert entries[4]["content"] == (
+        "用户按 Ctrl+C 取消了回合，命令已被终止。截至那时已有的输出如下。\nstarted"
+    )
+    assert entries[4]["summary"] == "已取消，命令已终止"
