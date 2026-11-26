@@ -1,0 +1,16 @@
+{
+  "case_id": "rejected-write",
+  "kind": "failure",
+  "source": {
+    "thread_id": "307105a159515819937a8e1e01da8f79",
+    "seq": 17
+  },
+  "failure_kind": "rejected_operation",
+  "expectation": {
+    "summary": "被拒绝的操作没有执行，也不得为同一个目标换一个工具再试。",
+    "operation": {
+      "name": "write_file",
+      "arguments": "{\"content\": \"print(\\\"bye\\\")\\n\", \"path\": \"bye.py\"}"
+    }
+  }
+}

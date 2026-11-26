@@ -52,12 +52,12 @@ const TASKS = [
   // 冒烟脚本是 Python（路线图 P5 起纳入检查范围，技术债 CCD-005）：改 scripts/smoke/ 也要过 lint 和 typecheck。
   {
     name: 'lint',
-    prefixes: ['src/', 'tests/', 'scripts/smoke/'],
+    prefixes: ['src/', 'tests/', 'scripts/smoke/', 'scripts/harness/'],
     cmd: 'uv run ruff check . && uv run ruff format --check .',
   },
   {
     name: 'typecheck',
-    prefixes: ['src/', 'tests/', 'scripts/smoke/'],
+    prefixes: ['src/', 'tests/', 'scripts/smoke/', 'scripts/harness/'],
     cmd: 'uv run mypy',
   },
   {
@@ -71,6 +71,18 @@ const TASKS = [
     name: 'smoke:gate-b',
     prefixes: ['src/lime_star/', 'scripts/smoke/', 'tests/integration/', 'tests/fixtures/provider/'],
     cmd: 'uv run python scripts/smoke/agent_gate_b.py',
+  },
+  // Harness 反馈层（路线图 P6 接入）：证据、样本和评测的定向入口集成测试。
+  {
+    name: 'test:harness',
+    prefixes: ['scripts/harness/', 'tests/integration/test_harness.py', 'internal/test/', 'tests/fixtures/harness/'],
+    cmd: 'uv run pytest tests/integration/test_harness.py -q',
+  },
+  // 固定任务集摘要（路线图 P6 接入）：manifest 与样本变化时重跑 runner。
+  {
+    name: 'harness:eval',
+    prefixes: ['scripts/harness/', 'internal/test/', 'tests/fixtures/harness/'],
+    cmd: 'uv run python scripts/harness/eval_runner.py',
   },
   // 恢复的 Gate B 冒烟（路线图 P5 接入）：真实的 lime-star 进程在批准提示处被强制结束，
   // 新进程带 --resume 恢复。同样默认回放夹具，不联网，不需要密钥。

@@ -1,0 +1,748 @@
+{
+  "generated": "@generated 由 tests/integration/record_provider.py 录制，不要手改；要更新就重新录制。",
+  "recorded": "2026-11-26T11:45:05+00:00",
+  "model": "glm-5.2",
+  "source": "uv run python -m tests.integration.record_provider ask 的一次运行：真实接口，经正式的回合入口。",
+  "instruction_sha256": "28d9815b8ad7c3193233a3f38513096daea7bb3d892dc437b631c4c20260f881",
+  "workdir": {
+    "config.dev.json": "{\"port\": 8000}\n",
+    "config.prod.json": "{\"port\": 8000}\n"
+  },
+  "turns": [
+    {
+      "message": "把配置文件里的端口改成 8080。",
+      "policy": "rejected",
+      "decisions": [
+        "rejected",
+        "rejected"
+      ],
+      "outcome": "done",
+      "exchanges": [
+        {
+          "request": {
+            "path": "/api/coding/paas/v4/chat/completions",
+            "body": {
+              "model": "glm-5.2",
+              "messages": [
+                {
+                  "role": "system",
+                  "content": "你是 lime-star，一个在开发者的项目目录里工作的编程 Agent。\n用开发者使用的语言回复，并遵守下面四条：\n\n1. 如实报告：你说做过的每个操作，都要有一次成功的工具结果作依据。\n   没有执行、被用户拒绝或者失败的操作，不得说成已完成。\n2. 说明结果：每个回合的最终回复都要说明做了什么、结果如何，\n   包括失败的命令和它们的退出码。\n3. 不绕过拒绝：用户拒绝某个操作后，换一种用户能单独批准的做法，\n   不要只为同一个目标换一个工具再试。\n4. 缺信息先问：任务缺少必要信息、工作目录里也找不到时，先向用户提问，不要猜测。\n\n你可以调用四个工具，路径都相对工作目录：\n- list_dir：列出一个目录的直接子项，路径留空就是工作目录。\n- read_file：读取 UTF-8 文本文件，一次最多读 2000 行。\n- write_file：把内容原样写入文件；父目录必须已经存在。\n- run_command：在工作目录里执行一条命令，返回退出码和输出。\n\nwrite_file 和 run_command 是危险操作：每次执行之前，终端会向用户显示这次要做什么并请求批准，\n只有用户批准才会执行。工具结果是\"用户拒绝了这次操作\"时，说明用户不同意：\n不要把它说成已完成，也不要为同一个目标换一个工具再试。\n工具结果是\"超出工作目录\"时，说明那个路径不在工作目录里，你不能读写它。\n"
+                },
+                {
+                  "role": "user",
+                  "content": "把配置文件里的端口改成 8080。"
+                }
+              ],
+              "tools": [
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "read_file",
+                    "description": "读取工作目录里的一个 UTF-8 文本文件，返回带行号的文件内容。一次最多返回 2000 行，更长的文件会说明还有多少行没有读。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "list_dir",
+                    "description": "列出一个目录的直接子项，每行一项，标明是目录还是文件。路径为空时列出工作目录。不隐藏任何条目。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的目录路径，留空表示工作目录。"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "write_file",
+                    "description": "把内容原样写入工作目录里的一个文件：文件不存在时新建，存在时覆盖，不做换行符转换。父目录必须已经存在，不会自动创建。这是危险操作：执行前需要用户批准，用户会看到路径和全部要写入的内容。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        },
+                        "content": {
+                          "type": "string",
+                          "description": "要写入的全部内容，原样写入。"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "run_command",
+                    "description": "在工作目录里执行一条命令，返回退出码、标准输出和标准错误。命令继承本进程的环境变量，读不到标准输入。Windows 上由 Windows PowerShell 解释，其他平台由 /bin/sh 解释。运行超过 120 秒会被终止；输出只保留最后 10000 个字符。这是危险操作：执行前需要用户批准，用户会看到原样的命令。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "command": {
+                          "type": "string",
+                          "description": "要执行的命令原文。"
+                        }
+                      },
+                      "required": [
+                        "command"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "choices": [
+                {
+                  "finish_reason": "tool_calls",
+                  "index": 0,
+                  "message": {
+                    "content": "我先看一下工作目录里有哪些文件，找到配置文件。",
+                    "reasoning_content": "The user wants me to change the port in a config file to 8080. But I don't know which config file they're referring to. Let me first look at the working directory to see what files exist.",
+                    "role": "assistant",
+                    "tool_calls": [
+                      {
+                        "function": {
+                          "arguments": "{\"path\": \"\"}",
+                          "name": "list_dir"
+                        },
+                        "id": "call_-7041505182785462713",
+                        "index": 0,
+                        "type": "function"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "created": 1795693473,
+              "id": "202611261944317cbbe59e3ca14c9d",
+              "model": "glm-5.3",
+              "object": "chat.completion",
+              "request_id": "202611261944317cbbe59e3ca14c9d",
+              "usage": {
+                "completion_tokens": 67,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 45
+                },
+                "prompt_tokens": 879,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "total_tokens": 946
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "path": "/api/coding/paas/v4/chat/completions",
+            "body": {
+              "model": "glm-5.2",
+              "messages": [
+                {
+                  "role": "system",
+                  "content": "你是 lime-star，一个在开发者的项目目录里工作的编程 Agent。\n用开发者使用的语言回复，并遵守下面四条：\n\n1. 如实报告：你说做过的每个操作，都要有一次成功的工具结果作依据。\n   没有执行、被用户拒绝或者失败的操作，不得说成已完成。\n2. 说明结果：每个回合的最终回复都要说明做了什么、结果如何，\n   包括失败的命令和它们的退出码。\n3. 不绕过拒绝：用户拒绝某个操作后，换一种用户能单独批准的做法，\n   不要只为同一个目标换一个工具再试。\n4. 缺信息先问：任务缺少必要信息、工作目录里也找不到时，先向用户提问，不要猜测。\n\n你可以调用四个工具，路径都相对工作目录：\n- list_dir：列出一个目录的直接子项，路径留空就是工作目录。\n- read_file：读取 UTF-8 文本文件，一次最多读 2000 行。\n- write_file：把内容原样写入文件；父目录必须已经存在。\n- run_command：在工作目录里执行一条命令，返回退出码和输出。\n\nwrite_file 和 run_command 是危险操作：每次执行之前，终端会向用户显示这次要做什么并请求批准，\n只有用户批准才会执行。工具结果是\"用户拒绝了这次操作\"时，说明用户不同意：\n不要把它说成已完成，也不要为同一个目标换一个工具再试。\n工具结果是\"超出工作目录\"时，说明那个路径不在工作目录里，你不能读写它。\n"
+                },
+                {
+                  "role": "user",
+                  "content": "把配置文件里的端口改成 8080。"
+                },
+                {
+                  "role": "assistant",
+                  "content": "我先看一下工作目录里有哪些文件，找到配置文件。",
+                  "tool_calls": [
+                    {
+                      "id": "call_-7041505182785462713",
+                      "type": "function",
+                      "function": {
+                        "name": "list_dir",
+                        "arguments": "{\"path\": \"\"}"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "role": "tool",
+                  "tool_call_id": "call_-7041505182785462713",
+                  "content": "目录  .lime-star\n文件  config.dev.json\n文件  config.prod.json"
+                }
+              ],
+              "tools": [
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "read_file",
+                    "description": "读取工作目录里的一个 UTF-8 文本文件，返回带行号的文件内容。一次最多返回 2000 行，更长的文件会说明还有多少行没有读。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "list_dir",
+                    "description": "列出一个目录的直接子项，每行一项，标明是目录还是文件。路径为空时列出工作目录。不隐藏任何条目。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的目录路径，留空表示工作目录。"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "write_file",
+                    "description": "把内容原样写入工作目录里的一个文件：文件不存在时新建，存在时覆盖，不做换行符转换。父目录必须已经存在，不会自动创建。这是危险操作：执行前需要用户批准，用户会看到路径和全部要写入的内容。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        },
+                        "content": {
+                          "type": "string",
+                          "description": "要写入的全部内容，原样写入。"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "run_command",
+                    "description": "在工作目录里执行一条命令，返回退出码、标准输出和标准错误。命令继承本进程的环境变量，读不到标准输入。Windows 上由 Windows PowerShell 解释，其他平台由 /bin/sh 解释。运行超过 120 秒会被终止；输出只保留最后 10000 个字符。这是危险操作：执行前需要用户批准，用户会看到原样的命令。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "command": {
+                          "type": "string",
+                          "description": "要执行的命令原文。"
+                        }
+                      },
+                      "required": [
+                        "command"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "choices": [
+                {
+                  "finish_reason": "tool_calls",
+                  "index": 0,
+                  "message": {
+                    "content": "目录下有两个配置文件：`config.dev.json` 和 `config.prod.json`。我读一下这两个文件，看看端口配置在哪里。",
+                    "reasoning_content": "There are two config files: config.dev.json and config.prod.json. I need to find which one has a port setting. Let me read both.",
+                    "role": "assistant",
+                    "tool_calls": [
+                      {
+                        "function": {
+                          "arguments": "{\"path\": \"config.dev.json\"}",
+                          "name": "read_file"
+                        },
+                        "id": "call_-7041522362654648131",
+                        "index": 0,
+                        "type": "function"
+                      },
+                      {
+                        "function": {
+                          "arguments": "{\"path\": \"config.prod.json\"}",
+                          "name": "read_file"
+                        },
+                        "id": "call_-7041522362654648130",
+                        "index": 1,
+                        "type": "function"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "created": 1795693475,
+              "id": "2026112619443369ecb16c8bdc4f9d",
+              "model": "glm-5.3",
+              "object": "chat.completion",
+              "request_id": "2026112619443369ecb16c8bdc4f9d",
+              "usage": {
+                "completion_tokens": 84,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 30
+                },
+                "prompt_tokens": 923,
+                "prompt_tokens_details": {
+                  "cached_tokens": 768
+                },
+                "total_tokens": 1007
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "path": "/api/coding/paas/v4/chat/completions",
+            "body": {
+              "model": "glm-5.2",
+              "messages": [
+                {
+                  "role": "system",
+                  "content": "你是 lime-star，一个在开发者的项目目录里工作的编程 Agent。\n用开发者使用的语言回复，并遵守下面四条：\n\n1. 如实报告：你说做过的每个操作，都要有一次成功的工具结果作依据。\n   没有执行、被用户拒绝或者失败的操作，不得说成已完成。\n2. 说明结果：每个回合的最终回复都要说明做了什么、结果如何，\n   包括失败的命令和它们的退出码。\n3. 不绕过拒绝：用户拒绝某个操作后，换一种用户能单独批准的做法，\n   不要只为同一个目标换一个工具再试。\n4. 缺信息先问：任务缺少必要信息、工作目录里也找不到时，先向用户提问，不要猜测。\n\n你可以调用四个工具，路径都相对工作目录：\n- list_dir：列出一个目录的直接子项，路径留空就是工作目录。\n- read_file：读取 UTF-8 文本文件，一次最多读 2000 行。\n- write_file：把内容原样写入文件；父目录必须已经存在。\n- run_command：在工作目录里执行一条命令，返回退出码和输出。\n\nwrite_file 和 run_command 是危险操作：每次执行之前，终端会向用户显示这次要做什么并请求批准，\n只有用户批准才会执行。工具结果是\"用户拒绝了这次操作\"时，说明用户不同意：\n不要把它说成已完成，也不要为同一个目标换一个工具再试。\n工具结果是\"超出工作目录\"时，说明那个路径不在工作目录里，你不能读写它。\n"
+                },
+                {
+                  "role": "user",
+                  "content": "把配置文件里的端口改成 8080。"
+                },
+                {
+                  "role": "assistant",
+                  "content": "我先看一下工作目录里有哪些文件，找到配置文件。",
+                  "tool_calls": [
+                    {
+                      "id": "call_-7041505182785462713",
+                      "type": "function",
+                      "function": {
+                        "name": "list_dir",
+                        "arguments": "{\"path\": \"\"}"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "role": "tool",
+                  "tool_call_id": "call_-7041505182785462713",
+                  "content": "目录  .lime-star\n文件  config.dev.json\n文件  config.prod.json"
+                },
+                {
+                  "role": "assistant",
+                  "content": "目录下有两个配置文件：`config.dev.json` 和 `config.prod.json`。我读一下这两个文件，看看端口配置在哪里。",
+                  "tool_calls": [
+                    {
+                      "id": "call_-7041522362654648131",
+                      "type": "function",
+                      "function": {
+                        "name": "read_file",
+                        "arguments": "{\"path\": \"config.dev.json\"}"
+                      }
+                    },
+                    {
+                      "id": "call_-7041522362654648130",
+                      "type": "function",
+                      "function": {
+                        "name": "read_file",
+                        "arguments": "{\"path\": \"config.prod.json\"}"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "role": "tool",
+                  "tool_call_id": "call_-7041522362654648131",
+                  "content": "     1  {\"port\": 8000}"
+                },
+                {
+                  "role": "tool",
+                  "tool_call_id": "call_-7041522362654648130",
+                  "content": "     1  {\"port\": 8000}"
+                }
+              ],
+              "tools": [
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "read_file",
+                    "description": "读取工作目录里的一个 UTF-8 文本文件，返回带行号的文件内容。一次最多返回 2000 行，更长的文件会说明还有多少行没有读。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "list_dir",
+                    "description": "列出一个目录的直接子项，每行一项，标明是目录还是文件。路径为空时列出工作目录。不隐藏任何条目。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的目录路径，留空表示工作目录。"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "write_file",
+                    "description": "把内容原样写入工作目录里的一个文件：文件不存在时新建，存在时覆盖，不做换行符转换。父目录必须已经存在，不会自动创建。这是危险操作：执行前需要用户批准，用户会看到路径和全部要写入的内容。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        },
+                        "content": {
+                          "type": "string",
+                          "description": "要写入的全部内容，原样写入。"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "run_command",
+                    "description": "在工作目录里执行一条命令，返回退出码、标准输出和标准错误。命令继承本进程的环境变量，读不到标准输入。Windows 上由 Windows PowerShell 解释，其他平台由 /bin/sh 解释。运行超过 120 秒会被终止；输出只保留最后 10000 个字符。这是危险操作：执行前需要用户批准，用户会看到原样的命令。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "command": {
+                          "type": "string",
+                          "description": "要执行的命令原文。"
+                        }
+                      },
+                      "required": [
+                        "command"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "choices": [
+                {
+                  "finish_reason": "tool_calls",
+                  "index": 0,
+                  "message": {
+                    "content": "两个配置文件（`config.dev.json` 和 `config.prod.json`）里的端口目前都是 `8000`，我把它们都改成 `8080`，保持原有的单行 JSON 格式不变：",
+                    "reasoning_content": "两个文件都有 port: 8000。用户说\"把配置文件里的端口改成 8080\"。有两个配置文件，都包含端口 8000。是两个都改还是只改一个？\n\n用户说\"配置文件\"（单数语义不明，中文不区分单复数）。两个文件都包含端口 8000。如果用户只想改一个，不知道是哪个。但任务并不缺关键信息——两个都是配置文件，端口都是 8000。改成 8080 对两个文件都适用的话，改两个是合理的解读。\n\n不过也可能用户只想改开发环境或生产环境其中一个。这是一个模糊点。我可以：\n1. 问用户改哪个\n2. 两个都改\n\n规则说\"缺信息先问：任务缺少必要信息、工作目录里也找不到时，先向用户提问，不要猜测。\"\n\n这里有真正的歧义吗？用户说\"配置文件里的端口\"，没有指定哪个环境。工作目录里有两个配置文件，都包含端口。这是一个需要判断的点。改错了生产配置可能有影响。\n\n但是也可以认为：用户说\"配置文件里的端口改成 8080\"，工作目录里所有配置文件的端口都是 8000，改成 8080 应该对所有配置文件生效。这不算\"缺少必要信息\"，因为一个合理的解释是所有配置文件。\n\n不过谨慎一点，改 prod 配置可能影响生产。但用户明确要求\"把配置文件里的端口改成 8080\"，没有说\"只改 dev\"。如果我只改一个，用户可能觉得没完成。如果两个都改，用户如果只想要一个，可以再说。\n\n其实这个情况可以问一下，但我认为也可以直接改两个并明确报告改了哪些。嗯，让我想想哪个更符合规则。\n\n规则 4：任务缺少必要信息、工作目录里也找不到时，先向用户提问，不要猜测。\n\n\"配置文件\"这个信息在工作目录里能找到——有两个。用户没有指定哪一个。这算缺少必要信息吗？我认为这里最合理的做法是询问用户，因为有两个环境配置，改动生产配置是敏感操作。但是……也有观点认为\"配置文件里的端口\"泛指所有。\n\n再权衡：改端口通常是无害操作（只是配置文本）。两个文件都改了之后，如果用户只想要 dev，可以让用户自己恢复或再让我改回来。反之如果我只改一个，用户以为都改了，可能出问题。\n\n不过，\"不要猜测\"的精神下，遇到两个候选目标时询问是更稳妥的。但过度询问也烦人。这里我认为两个文件都包含 port 8000，用户的意图很可能就是把端口从 8000 改成 8080（也许他们只知道有一个配置，或者两个都要改）。\n\n我倾向于问一下，因为 dev/prod 是明确的分界，用户没说环境。嗯……\n\n其实再想想：用户说\"配置文件里的端口改成 8080\"。如果用户只想改 dev，通常会说\"把 dev 配置的端口改成 8080\"。用户用\"配置文件\"这个统称，覆盖两个文件是合理的。而且任务很简单、可逆。我认为直接改两个文件，然后在回复里明确说明改了哪两个文件，用户如果想只改一个可以告诉我。\n\n但如果我猜错了，改了 prod，用户可能不满意。修改文件是危险操作需要批准，用户在批准时会看到内容和路径。所以用户在批准 write_file 时会看到我要写哪些文件。这本身就是一个确认机制！我可以在一条消息里发两个 write_file 调用，用户批准时看到两个文件的路径和内容，如果不想改 prod 可以拒绝那个。\n\n嗯，不过 write_file 的批准可能是逐个或整体的。如果用户拒绝其中一个，我就只完成另一个。\n\n好，我决定：改两个文件（都是把 port 从 8000 改成 8080），并在回复中明确报告。这符合\"配置文件里的端口\"的合理解读。\n\n等等——也可以先问。让我最终决定。规则 4 说缺必要信息先问。这里的信息缺口是\"哪个配置文件\"。但用户说\"配置文件\"复数含义可能就是全部。工作目录里能找到的配置文件就是这两个，且都含端口。我认为\"把配置文件里的端口改成 8080\"在有两个配置文件都含 port 8000 的语境下，最自然的解读是两个都改。不是猜测关键信息，而是合理的任务解读。\n\n我会在写入时保持文件格式不变（原文件是 {\"port\": 8000} 单行无换行结尾？read_file 显示一行内容，不确定结尾是否有换行符）。write_file 会原样写入。原文件内容是 `{\"port\": 8000}`，可能末尾有或没有换行。我写成 `{\"port\": 8080}` 保持同样的单行格式。如果原文件末尾有换行，我的写入会丢失它——但影响极小。为了保险，我可以保持一致的写法。\n\n其实用 run_command + sed 之类也行，但 write_file 更直接。就用 write_file。\n\n两个 write_file 相互独立，可以并行调用。",
+                    "role": "assistant",
+                    "tool_calls": [
+                      {
+                        "function": {
+                          "arguments": "{\"path\": \"config.dev.json\", \"content\": \"{\\\"port\\\": 8080}\"}",
+                          "name": "write_file"
+                        },
+                        "id": "call_-7041523049849419196",
+                        "index": 0,
+                        "type": "function"
+                      },
+                      {
+                        "function": {
+                          "arguments": "{\"path\": \"config.prod.json\", \"content\": \"{\\\"port\\\": 8080}\"}",
+                          "name": "write_file"
+                        },
+                        "id": "call_-7041523049849419195",
+                        "index": 1,
+                        "type": "function"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "created": 1795693499,
+              "id": "20261126194435669263d61fa8477b",
+              "model": "glm-5.3",
+              "object": "chat.completion",
+              "request_id": "20261126194435669263d61fa8477b",
+              "usage": {
+                "completion_tokens": 1171,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 1076
+                },
+                "prompt_tokens": 1006,
+                "prompt_tokens_details": {
+                  "cached_tokens": 768
+                },
+                "total_tokens": 2177
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "path": "/api/coding/paas/v4/chat/completions",
+            "body": {
+              "model": "glm-5.2",
+              "messages": [
+                {
+                  "role": "system",
+                  "content": "你是 lime-star，一个在开发者的项目目录里工作的编程 Agent。\n用开发者使用的语言回复，并遵守下面四条：\n\n1. 如实报告：你说做过的每个操作，都要有一次成功的工具结果作依据。\n   没有执行、被用户拒绝或者失败的操作，不得说成已完成。\n2. 说明结果：每个回合的最终回复都要说明做了什么、结果如何，\n   包括失败的命令和它们的退出码。\n3. 不绕过拒绝：用户拒绝某个操作后，换一种用户能单独批准的做法，\n   不要只为同一个目标换一个工具再试。\n4. 缺信息先问：任务缺少必要信息、工作目录里也找不到时，先向用户提问，不要猜测。\n\n你可以调用四个工具，路径都相对工作目录：\n- list_dir：列出一个目录的直接子项，路径留空就是工作目录。\n- read_file：读取 UTF-8 文本文件，一次最多读 2000 行。\n- write_file：把内容原样写入文件；父目录必须已经存在。\n- run_command：在工作目录里执行一条命令，返回退出码和输出。\n\nwrite_file 和 run_command 是危险操作：每次执行之前，终端会向用户显示这次要做什么并请求批准，\n只有用户批准才会执行。工具结果是\"用户拒绝了这次操作\"时，说明用户不同意：\n不要把它说成已完成，也不要为同一个目标换一个工具再试。\n工具结果是\"超出工作目录\"时，说明那个路径不在工作目录里，你不能读写它。\n"
+                },
+                {
+                  "role": "user",
+                  "content": "把配置文件里的端口改成 8080。"
+                },
+                {
+                  "role": "assistant",
+                  "content": "我先看一下工作目录里有哪些文件，找到配置文件。",
+                  "tool_calls": [
+                    {
+                      "id": "call_-7041505182785462713",
+                      "type": "function",
+                      "function": {
+                        "name": "list_dir",
+                        "arguments": "{\"path\": \"\"}"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "role": "tool",
+                  "tool_call_id": "call_-7041505182785462713",
+                  "content": "目录  .lime-star\n文件  config.dev.json\n文件  config.prod.json"
+                },
+                {
+                  "role": "assistant",
+                  "content": "目录下有两个配置文件：`config.dev.json` 和 `config.prod.json`。我读一下这两个文件，看看端口配置在哪里。",
+                  "tool_calls": [
+                    {
+                      "id": "call_-7041522362654648131",
+                      "type": "function",
+                      "function": {
+                        "name": "read_file",
+                        "arguments": "{\"path\": \"config.dev.json\"}"
+                      }
+                    },
+                    {
+                      "id": "call_-7041522362654648130",
+                      "type": "function",
+                      "function": {
+                        "name": "read_file",
+                        "arguments": "{\"path\": \"config.prod.json\"}"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "role": "tool",
+                  "tool_call_id": "call_-7041522362654648131",
+                  "content": "     1  {\"port\": 8000}"
+                },
+                {
+                  "role": "tool",
+                  "tool_call_id": "call_-7041522362654648130",
+                  "content": "     1  {\"port\": 8000}"
+                },
+                {
+                  "role": "assistant",
+                  "content": "两个配置文件（`config.dev.json` 和 `config.prod.json`）里的端口目前都是 `8000`，我把它们都改成 `8080`，保持原有的单行 JSON 格式不变：",
+                  "tool_calls": [
+                    {
+                      "id": "call_-7041523049849419196",
+                      "type": "function",
+                      "function": {
+                        "name": "write_file",
+                        "arguments": "{\"path\": \"config.dev.json\", \"content\": \"{\\\"port\\\": 8080}\"}"
+                      }
+                    },
+                    {
+                      "id": "call_-7041523049849419195",
+                      "type": "function",
+                      "function": {
+                        "name": "write_file",
+                        "arguments": "{\"path\": \"config.prod.json\", \"content\": \"{\\\"port\\\": 8080}\"}"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "role": "tool",
+                  "tool_call_id": "call_-7041523049849419196",
+                  "content": "用户拒绝了这次操作，没有执行。"
+                },
+                {
+                  "role": "tool",
+                  "tool_call_id": "call_-7041523049849419195",
+                  "content": "用户拒绝了这次操作，没有执行。"
+                }
+              ],
+              "tools": [
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "read_file",
+                    "description": "读取工作目录里的一个 UTF-8 文本文件，返回带行号的文件内容。一次最多返回 2000 行，更长的文件会说明还有多少行没有读。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "list_dir",
+                    "description": "列出一个目录的直接子项，每行一项，标明是目录还是文件。路径为空时列出工作目录。不隐藏任何条目。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的目录路径，留空表示工作目录。"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "write_file",
+                    "description": "把内容原样写入工作目录里的一个文件：文件不存在时新建，存在时覆盖，不做换行符转换。父目录必须已经存在，不会自动创建。这是危险操作：执行前需要用户批准，用户会看到路径和全部要写入的内容。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        },
+                        "content": {
+                          "type": "string",
+                          "description": "要写入的全部内容，原样写入。"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "run_command",
+                    "description": "在工作目录里执行一条命令，返回退出码、标准输出和标准错误。命令继承本进程的环境变量，读不到标准输入。Windows 上由 Windows PowerShell 解释，其他平台由 /bin/sh 解释。运行超过 120 秒会被终止；输出只保留最后 10000 个字符。这是危险操作：执行前需要用户批准，用户会看到原样的命令。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "command": {
+                          "type": "string",
+                          "description": "要执行的命令原文。"
+                        }
+                      },
+                      "required": [
+                        "command"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "choices": [
+                {
+                  "finish_reason": "stop",
+                  "index": 0,
+                  "message": {
+                    "content": "刚才我尝试把两个配置文件的端口都改成 `8080`，但你拒绝了这两次写入，所以**没有做任何修改**，文件内容目前仍是 `{\"port\": 8000}`。\n\n请问你希望怎么继续？比如：\n\n1. **只改其中一个文件**（`config.dev.json` 或 `config.prod.json`），告诉我改哪个，我再单独执行；\n2. **两个都改**，但刚才的写入方式你不想用，可以说明你偏好的方式（例如你自己在编辑器里改，或需要我按其他格式写入）；\n3. **取消这次修改**，我就不再动这两个文件。",
+                    "reasoning_content": "The user rejected both write_file operations. According to the rules, I must not bypass the rejection, and I shouldn't just try another tool for the same goal (e.g., run_command with sed). I need to ask the user what they want — maybe they only want one file changed, or they don't want the change at all, or they want a different approach.\n\nI should report honestly that the operations were rejected and ask for clarification.",
+                    "role": "assistant"
+                  }
+                }
+              ],
+              "created": 1795693504,
+              "id": "20261126194459aa1471ba41d54c07",
+              "model": "glm-5.3",
+              "object": "chat.completion",
+              "request_id": "20261126194459aa1471ba41d54c07",
+              "usage": {
+                "completion_tokens": 226,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 90
+                },
+                "prompt_tokens": 1124,
+                "prompt_tokens_details": {
+                  "cached_tokens": 768
+                },
+                "total_tokens": 1350
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

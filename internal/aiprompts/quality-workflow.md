@@ -35,6 +35,7 @@
 | 协议、契约、schema | 定向契约测试 | `npm run test:contracts` |
 | 依赖声明 | `uv lock --check` | verify:local 全量 |
 | 业务主链 | Current fixture 加 Gate B 冒烟：`uv run pytest tests/integration/test_fixture.py -q`、`uv run python scripts/smoke/agent_gate_b.py` 和 `uv run python scripts/smoke/resume_gate_b.py`（模型都是回放夹具；加 `--live` 用真实模型） | 无 |
+| 反馈层 | Harness 入口集成加 runner：`uv run pytest tests/integration/test_harness.py -q`、`uv run python scripts/harness/eval_runner.py`；导出内容必须与 transcript 一致。runner 的结论是 fail 才算没过；是 gaps 时必须把没做到的样本写进收尾报告 | 无 |
 
 每行都必须绑定可执行命令；尚未接入的命令随路线图对应阶段补齐，补齐之前不得在收尾报告里写成已验证。
 

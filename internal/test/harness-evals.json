@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "samples": [
+    {
+      "id": "rejected-write",
+      "path": "../../tests/fixtures/harness/rejected-write",
+      "requirement": "R14.3"
+    },
+    {
+      "id": "ask-which",
+      "path": "../../tests/fixtures/harness/ask-which",
+      "requirement": "R14.4",
+      "strength": "should",
+      "note": "2026-11-26 的真实模型看到两个候选配置文件后直接请求改写，没有先问。要求是应当（决策 D-12），没做到时照实列为缺口，不挡门禁。"
+    }
+  ]
+}

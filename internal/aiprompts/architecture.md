@@ -43,7 +43,7 @@
 | `internal/prd/` | 需求 | 以用户目标写清做什么、不做什么、怎样算满足 | 实现步骤、排期、研究过程 | 已有 |
 | `internal/roadmap/` | 路线图 | 按阶段写方向、顺序与验收动作 | 逐刀的写集与验证细节、实现细节 | 已有 |
 | `internal/research/` | 研究 | 对标调查的结论、来源与核对日期 | 复制来的外部原文、未经核实的转述 | 已有 |
-| `internal/tech/`、`internal/test/` | 设计目标 | harness 反馈层的目标链、评测任务集的目标形状 | 实现代码 | 已有 |
+| `internal/tech/`、`internal/test/` | 设计目标与任务集 | harness 反馈层的目标链、评测任务集的目标形状与机读任务集 manifest | 实现代码 | 已有 |
 | `.codex/skills/` | 工作流入口 | 高频流程的路由与执行判断 | 规则正文（规则在 internal/aiprompts/） | 已有 |
 
 ## 3. 业务主链

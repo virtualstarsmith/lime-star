@@ -1,0 +1,11 @@
+{
+  "evidence": {
+    "directory": "../rejected-write-evidence",
+    "events": "events.jsonl"
+  },
+  "source": {
+    "thread_id": "307105a159515819937a8e1e01da8f79",
+    "seq": 17
+  },
+  "turn_id": "38e4fd89dd5f5fd9b6d2da476f7d007a"
+}

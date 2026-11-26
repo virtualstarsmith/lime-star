@@ -38,6 +38,7 @@ lime-star 是用 Lime 的开发范式练习开发 Agent 的个人项目。Agent 
 7. 任何显示、导出或测试不得自己拼第二份会话真相，只能从会话记录（thread_store 的 transcript）派生。守卫是 Gate A 测试：read_thread 的结果必须与 transcript 一致。
 8. 标记为危险的操作必须经 app 回合入口的 `respond_action` 批准后才能执行；被拒绝的操作不执行，决定写进会话记录。守卫是 Gate B 冒烟 `scripts/smoke/agent_gate_b.py` 里的拒绝路径断言。
 9. 恢复只能从 thread_store 的会话记录读回，内存里不保留第二份可恢复状态；有开始、没有结局的回合由读取的一方判为中断，恢复后不自动续跑；一个会话记录同一时刻只有一个写入者。守卫是入口集成测试 `tests/integration/test_resume.py` 里"写入后以新实例读取"的用例，以及 Gate B 冒烟 `scripts/smoke/resume_gate_b.py`。
+10. 证据、回放样本和评测只能单向消费 transcript 及其派生物：`transcript -> evidence -> replay -> eval`；不得反向定义运行事实，也不得每层重读 transcript 重拼。守卫：`tests/integration/test_harness.py` 里证据包 item 与 transcript 逐项一致的断言。
 
 ## 执行方式
 

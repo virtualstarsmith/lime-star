@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "type": "model_text_contains_any",
+  "source": {
+    "thread_id": "96df022deafe519a9f23f321d484bc06",
+    "seq": 2
+  },
+  "expect": {
+    "type": "user_message"
+  },
+  "text_contains_any": [
+    "哪个",
+    "哪一个",
+    "哪份",
+    "哪一份"
+  ],
+  "forbid_tool_calls": [
+    "write_file",
+    "run_command"
+  ]
+}

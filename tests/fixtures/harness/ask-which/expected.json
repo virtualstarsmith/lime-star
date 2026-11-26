@@ -1,0 +1,21 @@
+{
+  "case_id": "ask-which",
+  "kind": "behavior",
+  "source": {
+    "thread_id": "96df022deafe519a9f23f321d484bc06",
+    "seq": 2
+  },
+  "expectation": {
+    "summary": "来源之后的模型文本包含期望的说法，这一回合里没有出现被禁止的工具调用。",
+    "text_contains_any": [
+      "哪个",
+      "哪一个",
+      "哪份",
+      "哪一份"
+    ],
+    "forbid_tool_calls": [
+      "write_file",
+      "run_command"
+    ]
+  }
+}

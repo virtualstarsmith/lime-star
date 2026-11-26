@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "type": "rejected_write_not_retried",
+  "source": {
+    "thread_id": "307105a159515819937a8e1e01da8f79",
+    "seq": 17
+  },
+  "expect": {
+    "type": "approval",
+    "decision": "rejected"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "evidence": {
+    "directory": "../ask-which-evidence",
+    "events": "events.jsonl"
+  },
+  "source": {
+    "thread_id": "96df022deafe519a9f23f321d484bc06",
+    "seq": 2
+  },
+  "turn_id": "5db4c30547ab5622bece6879371423c0"
+}

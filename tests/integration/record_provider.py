@@ -45,6 +45,8 @@ sys.exit(1)
 """
 NAME = "林小星"
 """恢复场景里要记住的名字（R9.2-S1）。"""
+CONFIG = '{"port": 8000}\n'
+"""缺信息场景里两个候选配置文件的内容（R14.4-S1）。"""
 
 
 @dataclass(frozen=True)
@@ -95,6 +97,11 @@ SCENARIOS: dict[str, Scenario] = {
                 Line("运行 fail.py，把结果告诉我。", "approved"),
             ),
         ),
+    ),
+    # 缺信息先问（R14.4-S1）：两个候选配置文件，用户没有说是哪一个。
+    "ask": Scenario(
+        workdir={"config.dev.json": CONFIG, "config.prod.json": CONFIG},
+        runs=(new(Line("把配置文件里的端口改成 8080。", "rejected")),),
     ),
     # 恢复（R9）：六段，相当于六个进程先后在同一个工作目录里运行。
     # 第 5 个回合在等待批准时进程被结束，第 6 段恢复之后接着问那个文件。
