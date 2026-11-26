@@ -1,6 +1,6 @@
 # p5-resume 计划
 
-状态: in_progress
+状态: done
 日期: 2026-11-26
 主目标: 进程退出或被中断之后，`lime-star --resume` 从会话记录恢复同一个会话并接着对话；没有正常结束的回合被判为中断，恢复后不自动续跑（Gate B）。
 
@@ -163,12 +163,11 @@
 | 全程 | `uv run ruff check .` 与 `uv run ruff format --check .` | 静态检查 | 通过 |
 | 全程 | `uv run mypy`，另按 Linux 平台口径跑一次 | 类型检查 | 通过：75 个文件。冒烟脚本从本轮起在检查范围里（CCD-005） |
 | 全程 | `node scripts/verify-local.mjs --full` | 门禁 | 签署之后通过（2026-11-26）：13 个任务全部通过，约 4 分钟。test:unit 397 条通过、3 条跳过（Live）；smoke:gate-b 23 项；smoke:resume 26 项；test:guards 41 条；architecture 21 条。签署之前停在 test:unit 的确认块守卫上（396 通过、1 失败），之后的四个任务单独跑，只有那一条失败 |
-| 全程 | CI：推送之后 GitHub Actions 的运行 | 门禁，Linux runner | 未跑：只能在提交和推送之后跑 |
+| 全程 | CI：推送之后 GitHub Actions 的运行 45798785239，针对提交 033df27 | 门禁，Linux runner | 通过：verify 作业的每一步都成功，Local gate (full) 在 Linux 上通过，约 2 分钟。这是恢复的代码、锁的 flock 分支和恢复的冒烟第一次在 Windows 以外运行。依据是运行、作业和步骤的状态，日志没有读，所以 Linux 上逐条用例的结果没有记录 |
 
 未跑与原因：
 
-- CI：代码还没有提交。推送之后核对；Linux 上的全量门禁第一次跑到锁的 flock 分支。
-- 锁的 POSIX 分支：本机是 Windows，`fcntl.flock` 那一支跑不了。入口集成、真实进程的用例和两个冒烟在 CI 的 Linux runner 上都会经过取锁和放锁，推送之后看结果。风险：那一支只有三行，但没有在本机执行过。
+- CI 已经通过，见表里最后一行。锁的 flock 分支本机跑不了，由那次全量门禁覆盖：入口集成、真实进程的用例和恢复的冒烟都经过取锁和放锁。日志没有读，Linux 上逐条用例的结果没有记录。
 - 真实控制台上批准提示处的 Ctrl+C 之后的恢复：交互循环和入口集成有用例，真实控制台里只验证了命令运行中的 Ctrl+C。管道驱动和冒烟脚本都发不出真实的 Ctrl+C。
 - 真实模型上"已获批准的操作在执行途中被结束"之后的恢复：Live 只跑了"等待批准时被结束"这一种；另一种只有替身工具的入口集成证据。
 - `--live` 冒烟的请求数：脚本不打印它，这次没有单独记录。
@@ -273,14 +272,14 @@ Responsible developer confirmation: 仓库所有者，2026-11-26
 需求逐条：R9.1、R9.2、R9.3、R9.4、R9.5 都是 Pass，证据见"逐条验证"。
 
 没有到 Pass 的：
-- 独占写入在 Linux 上的行为：Evidence Gap。Windows 上有单元、入口集成和真实进程的证据；flock 那一支在本机跑不了，等 CI。
+- 独占写入在 Linux 上的行为：本机上是 Evidence Gap，CI 通过之后有了状态级的证据。Windows 上有单元、入口集成和真实进程的证据；flock 那一支由 CI 的全量门禁在 Linux runner 上跑过，依据是作业和步骤的状态，日志没有读。
 - 已获批准的操作在执行途中被结束之后的恢复，在真实模型上的表现：Evidence Gap。判定本身有单元和入口集成的证据（替身工具），Live 只跑了另一种中断。
 
 ### 沉淀的回归资产
 
 | 缺口 | 后续资产 |
 | --- | --- |
-| 锁的 flock 分支没有本地证据 | CI 的全量门禁（Linux runner）；推送之后核对运行结果 |
+| 锁的 flock 分支没有本地证据 | CI 的全量门禁（Linux runner）；运行 45798785239 已通过。以后改 hold.py，这一支的证据仍然只能来自 CI |
 | 已批准的操作被中断之后，真实模型怎样回答 | 需要时给 resume 场景加一个回合重录；现在只有替身的证据 |
 | 真实控制台上批准提示处的 Ctrl+C | 与 P4 留下的是同一个缺口，仍只有进程内的用例；人工验收时可以做一次 |
 | "取消的回合要不要让模型知道"仍待决定 | "待仓库所有者决定"第 1 条 |
@@ -325,13 +324,20 @@ Responsible developer confirmation: 仓库所有者，2026-11-26
 - 验证：签署之后重跑 `node scripts/verify-local.mjs --full`，13 个任务全部通过，约 4 分钟。test:unit 397 条通过、3 条跳过（Live）；smoke:gate-b 23 项；smoke:resume 26 项；test:guards 41 条；architecture 21 条。
 - "待仓库所有者决定"的两条：这次的回复没有提到它们，都保持现状，不改代码。
 - 完成度：95%。代码、验证和架构确认都有了；还差 CI。
-- 下一刀：提交并推送，仓库所有者这次明确要求了。推送之后核对 CI，重点看 Linux 上锁的 flock 分支；通过就在路线图追加 P5 的阶段结论，关闭本计划。
+### 2026-11-26（提交与 CI）
+
+- 改动：仓库所有者说"确认提交推送"。提交 033df27，42 个文件，已推送到 origin/main；路线图追加 P5 的阶段结论，验证矩阵的 P5 行补上结果，当前结论更新为 85%；本计划关闭，从本目录 README 的当前计划表里删掉这一行。
+- 验证：推送之后 CI 运行 45798785239，针对提交 033df27，结论 success；verify 作业的每一步都成功，Local gate (full) 在 Linux runner 上通过，约 2 分钟。这是恢复的代码、锁的 flock 分支和恢复的冒烟第一次在 Windows 以外运行。依据是运行、作业和步骤的状态，日志没有读。记录的这一次提交只改文档，不再为本计划追记它的 CI。
+- 未跑：见验证矩阵后面的"未跑与原因"，剩下的都不是退出条件。
+- "待仓库所有者决定"的两条：仍待答复，带到路线图的下一刀里。
+- 完成度：P5 100%。路线图 85%，P0 到 P3 和 P5 完成，P4 已交付，P6、P7 未开始。
+- 下一刀：见路线图 2026-11-26 P5 resume 完成那一条。
 
 ## 当前结论
 
 - 治理四分类：current 新增 thread_store 的 hold.py（Hold、Busy）、threads.py（latest）、turns.py（turn_count、last_reason、interrupted）；app 的 resume_session、Recap、NoSession 和 Session.close；CLI 的 `--resume` 与恢复时的说明；protocol 的 Outcome.INTERRUPTED；tool_runtime 的 Registry.dangerous；scripts/smoke/resume_gate_b.py 和 verify-local 的 smoke:resume 任务；测试里的 Died、smoke.py、分段录制的录制脚本和 resume 夹具。current 扩展：Session 持有独占写入；chat 的 recap 参数和 interrupted 的投影；thread-items 契约的结局枚举；pyproject 的 mypy 范围和 verify-local 里 lint、typecheck 的触发路径；support.py 里共用的小工具。compat、deprecated、dead 均无新增或删除。直接替换掉的内部做法不属于四类：test_help_does_not_list_resume_yet 由 test_help_lists_resume 取代；agent_gate_b.py 里的四个小工具挪进 tests/integration/smoke.py；录制场景从"一段回合"改成"若干段"。
-- 验证结果与未验证原因：见验证矩阵。路线图 P5 的四条退出条件逐条有结果：交付的需求逐条有验证记录；`--resume` 在新进程里恢复历史并继续对话；Ctrl+C 打断和强制结束两种情形下，回合分别被记为取消和被判为中断，恢复后不自动续跑；两种恢复都有真实进程的 Gate B 证据，真实控制台上的 Ctrl+C 另有一条。可追踪验收里 R9 的五条都是 Pass，另有两处 Evidence Gap。未验证：CI（只能在提交和推送之后跑）；锁的 flock 分支（本机是 Windows）；真实控制台上批准提示处的 Ctrl+C；已批准的操作被中断之后在真实模型上的表现。架构确认块已由仓库所有者于 2026-11-26 签署，本地门禁 13 个任务全部通过；CI 要等提交和推送之后才能跑。
-- 未做与原因：路线图没有改。P4 仍记为"已交付，等答复"，P5 的阶段结论等仓库所有者验收、CI 通过之后追加；p4 和 p5 的计划都还开着。
+- 验证结果与未验证原因：见验证矩阵。路线图 P5 的四条退出条件逐条有结果：交付的需求逐条有验证记录；`--resume` 在新进程里恢复历史并继续对话；Ctrl+C 打断和强制结束两种情形下，回合分别被记为取消和被判为中断，恢复后不自动续跑；两种恢复都有真实进程的 Gate B 证据，真实控制台上的 Ctrl+C 另有一条。可追踪验收里 R9 的五条都是 Pass。未验证：真实控制台上批准提示处的 Ctrl+C；已批准的操作被中断之后在真实模型上的表现；Linux 上逐条用例的结果（CI 的日志没有读，只有作业和步骤的状态）。架构确认块已由仓库所有者于 2026-11-26 签署，本地门禁 13 个任务全部通过，CI 通过（运行 45798785239）。
+- 未做与原因：路线图已在提交 033df27 推送、CI 通过之后追加 P5 的阶段结论，本计划关闭。P4 仍记为"已交付，等答复"，p4 的计划还开着：P4 的两件事和"取消的回合要不要让模型知道"都还等仓库所有者答复，带在路线图的下一刀里。
 - 来源声明：对照阅读了 lime 仓库 lime-rs/crates/thread-store 的目录结构，lib.rs 与 store.rs 的文件头，history/replay.rs，history_validation.rs（读过，没有取用），runtime_snapshot.rs 的文件头，以及 internal/aiprompts/query-loop.md 里关于恢复路径的条目。取三个思路：会话放在哪里、怎样列出和读回是存储自己的事，调用方只拿到会话标识和项；判定只从已落盘的项出发，每次重新读文件来算，补记只写缺的那几项；恢复后的对话沿用从同一份会话记录派生的上下文，不另拼一份。按本仓库语境重写，没有复制原文。Windows 上 msvcrt.locking 的行为是本机用临时脚本实测的，脚本在仓库外，事后已经删掉。真实模型只用于录制夹具（7 次请求）和一次 Live 冒烟。
 
-完成度: 95%
+完成度: 100%

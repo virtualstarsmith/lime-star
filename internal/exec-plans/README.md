@@ -23,7 +23,6 @@
 | 计划 | 状态 | 主目标 |
 | --- | --- | --- |
 | `p4-tools-approval-plan.md` | 进行中 | 列目录、写文件、执行命令与审批，MVP 主场景的 Gate B 冒烟 |
-| `p5-resume-plan.md` | 进行中 | 中断之后用 `--resume` 从会话记录恢复，不续跑；恢复的 Gate B 冒烟 |
 
 计划收尾后，从本表删除对应行。路线图不列入本表，见 `../roadmap/README.md`。
 
