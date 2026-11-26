@@ -17,6 +17,22 @@ def test_help_flags(flag: str) -> None:
     assert parse_args([flag]) == Args(show_version=False, show_help=True)
 
 
+def test_resume_flag() -> None:
+    """R1.2：--resume 是已知的参数，它启动恢复而不是新会话。"""
+    assert parse_args(["--resume"]) == Args(resume=True)
+
+
+def test_version_and_help_take_precedence_over_resume() -> None:
+    assert parse_args(["--resume", "--version"]) == Args(show_version=True, resume=True)
+    assert parse_args(["--resume", "-h"]) == Args(show_help=True, resume=True)
+
+
+def test_resume_next_to_an_unknown_argument_is_rejected() -> None:
+    with pytest.raises(UsageError) as excinfo:
+        parse_args(["--resume", "--nosuch"])
+    assert str(excinfo.value) == "未知的参数：--nosuch"
+
+
 def test_version_takes_precedence_over_help() -> None:
     assert parse_args(["--help", "--version"]) == Args(show_version=True, show_help=True)
 

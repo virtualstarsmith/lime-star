@@ -2,8 +2,9 @@
 
 位置是工作目录下的 .lime-star/threads/<thread_id>.jsonl（决策 D-23、D-29）。
 每一行是带信封的一项，形状由仓库根的 protocol/thread-items.schema.json 约定（契约 thread-items）。
-边界以 internal/aiprompts/architecture.md 为准：这里只管会话记录的写入、读回和编码，
-不放临时界面状态，也不在内存里保留第二份会话真相。
+边界以 internal/aiprompts/architecture.md 为准：这个模块只管一份会话记录的写入、读回和编码，
+不放临时界面状态，也不在内存里保留第二份会话真相。工作目录下会话的查找、独占写入和回合的读模型
+分别在 threads.py、hold.py、turns.py。
 """
 
 from __future__ import annotations

@@ -7,7 +7,6 @@
 
 import dataclasses
 import io
-import json
 import queue
 from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
@@ -18,7 +17,7 @@ from lime_star import __version__
 from lime_star.app import Outcome, Session
 from lime_star.cli.chat import PROMPT, chat, project
 from lime_star.protocol import (
-    ITEM_KINDS,
+    ENVELOPE,
     Entry,
     Json,
     ToolCall,
@@ -30,16 +29,18 @@ from lime_star.thread_store import read
 from lime_star.tool_runtime import Registry, Tool, ToolOutput
 from tests.integration.fake_model import FakeModel, Hold
 from tests.integration.support import (
+    KINDS,
     CliProcess,
+    entries_of,
     kill_tree,
+    lines_of,
     read_log,
     transcript_file,
     wait_until,
 )
 
 FIXED = datetime(2026, 11, 25, 1, 2, 3, 400000, tzinfo=UTC)
-KINDS = {kind.kind: kind for kind in ITEM_KINDS}
-ENVELOPE = ("seq", "time", "thread_id", "turn_id")
+
 READ = ("read_file", {"path": "notes.txt"})
 NOTES = "甲\n乙\n"
 TOOL_TURN = [
@@ -58,32 +59,8 @@ def put(base: Path, relative: str, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def lines_of(path: Path) -> list[dict[str, Any]]:
-    """用例自己解析会话记录文件：只取完整的行。"""
-    return [json.loads(line) for line in path.read_bytes().split(b"\n")[:-1]]
-
-
 def types_on_disk(workdir: Path) -> list[str]:
     return [line["type"] for line in lines_of(transcript_file(workdir))]
-
-
-def entries_of(path: Path) -> list[Entry]:
-    """按文件里的每一行自己拼出项，不经过产品的读回代码。"""
-    entries = []
-    for line in lines_of(path):
-        payload = {key: value for key, value in line.items() if key not in (*ENVELOPE, "type")}
-        if line["type"] == "turn_end":
-            payload["outcome"] = Outcome(payload["outcome"])
-        entries.append(
-            Entry(
-                line["seq"],
-                datetime.fromisoformat(line["time"]),
-                line["thread_id"],
-                line["turn_id"],
-                KINDS[line["type"]](**payload),
-            )
-        )
-    return entries
 
 
 class Lines:
@@ -286,7 +263,8 @@ def test_a_killed_process_leaves_only_complete_lines(
         "user_message",
     ]
     assert len(read(path)) == 10
-    # 第二个回合有开始、没有结局；读回的一方在路线图 P5 把这样的回合判为中断。
+    # 第二个回合有开始、没有结局。只凭文件读回时它原样读出；恢复会话的一方把它判为中断，
+    # 见 test_resume.py 和 test_cli_resume.py。
 
 
 def test_every_request_log_record_points_at_exactly_one_turn(

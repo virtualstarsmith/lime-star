@@ -1,0 +1,1107 @@
+{
+  "generated": "@generated 由 tests/integration/record_provider.py 录制，不要手改；要更新就重新录制。",
+  "recorded": "2026-11-26T06:05:31+00:00",
+  "model": "glm-5.2",
+  "source": "uv run python -m tests.integration.record_provider resume 的一次运行：真实接口，经正式的回合入口。",
+  "instruction_sha256": "28d9815b8ad7c3193233a3f38513096daea7bb3d892dc437b631c4c20260f881",
+  "workdir": {},
+  "turns": [
+    {
+      "message": "我叫林小星，请记住我的名字。只回复“好的”。",
+      "policy": "approved",
+      "decisions": [],
+      "outcome": "done",
+      "exchanges": [
+        {
+          "request": {
+            "path": "/api/coding/paas/v4/chat/completions",
+            "body": {
+              "model": "glm-5.2",
+              "messages": [
+                {
+                  "role": "system",
+                  "content": "你是 lime-star，一个在开发者的项目目录里工作的编程 Agent。\n用开发者使用的语言回复，并遵守下面四条：\n\n1. 如实报告：你说做过的每个操作，都要有一次成功的工具结果作依据。\n   没有执行、被用户拒绝或者失败的操作，不得说成已完成。\n2. 说明结果：每个回合的最终回复都要说明做了什么、结果如何，\n   包括失败的命令和它们的退出码。\n3. 不绕过拒绝：用户拒绝某个操作后，换一种用户能单独批准的做法，\n   不要只为同一个目标换一个工具再试。\n4. 缺信息先问：任务缺少必要信息、工作目录里也找不到时，先向用户提问，不要猜测。\n\n你可以调用四个工具，路径都相对工作目录：\n- list_dir：列出一个目录的直接子项，路径留空就是工作目录。\n- read_file：读取 UTF-8 文本文件，一次最多读 2000 行。\n- write_file：把内容原样写入文件；父目录必须已经存在。\n- run_command：在工作目录里执行一条命令，返回退出码和输出。\n\nwrite_file 和 run_command 是危险操作：每次执行之前，终端会向用户显示这次要做什么并请求批准，\n只有用户批准才会执行。工具结果是\"用户拒绝了这次操作\"时，说明用户不同意：\n不要把它说成已完成，也不要为同一个目标换一个工具再试。\n工具结果是\"超出工作目录\"时，说明那个路径不在工作目录里，你不能读写它。\n"
+                },
+                {
+                  "role": "user",
+                  "content": "我叫林小星，请记住我的名字。只回复“好的”。"
+                }
+              ],
+              "tools": [
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "read_file",
+                    "description": "读取工作目录里的一个 UTF-8 文本文件，返回带行号的文件内容。一次最多返回 2000 行，更长的文件会说明还有多少行没有读。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "list_dir",
+                    "description": "列出一个目录的直接子项，每行一项，标明是目录还是文件。路径为空时列出工作目录。不隐藏任何条目。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的目录路径，留空表示工作目录。"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "write_file",
+                    "description": "把内容原样写入工作目录里的一个文件：文件不存在时新建，存在时覆盖，不做换行符转换。父目录必须已经存在，不会自动创建。这是危险操作：执行前需要用户批准，用户会看到路径和全部要写入的内容。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        },
+                        "content": {
+                          "type": "string",
+                          "description": "要写入的全部内容，原样写入。"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "run_command",
+                    "description": "在工作目录里执行一条命令，返回退出码、标准输出和标准错误。命令继承本进程的环境变量，读不到标准输入。Windows 上由 Windows PowerShell 解释，其他平台由 /bin/sh 解释。运行超过 120 秒会被终止；输出只保留最后 10000 个字符。这是危险操作：执行前需要用户批准，用户会看到原样的命令。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "command": {
+                          "type": "string",
+                          "description": "要执行的命令原文。"
+                        }
+                      },
+                      "required": [
+                        "command"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "choices": [
+                {
+                  "finish_reason": "stop",
+                  "index": 0,
+                  "message": {
+                    "content": "好的",
+                    "reasoning_content": "The user asks me to remember their name and only reply \"好的\" (OK). This is a simple instruction. I should just reply \"好的\" as requested. No tools needed.",
+                    "role": "assistant"
+                  }
+                }
+              ],
+              "created": 1795673111,
+              "id": "20261126140508ecef478d77d847c7",
+              "model": "glm-5.3",
+              "object": "chat.completion",
+              "request_id": "20261126140508ecef478d77d847c7",
+              "usage": {
+                "completion_tokens": 39,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 37
+                },
+                "prompt_tokens": 883,
+                "prompt_tokens_details": {
+                  "cached_tokens": 0
+                },
+                "total_tokens": 922
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "message": "我刚才说的名字是什么？只回复名字。",
+      "policy": "approved",
+      "decisions": [],
+      "outcome": "done",
+      "exchanges": [
+        {
+          "request": {
+            "path": "/api/coding/paas/v4/chat/completions",
+            "body": {
+              "model": "glm-5.2",
+              "messages": [
+                {
+                  "role": "system",
+                  "content": "你是 lime-star，一个在开发者的项目目录里工作的编程 Agent。\n用开发者使用的语言回复，并遵守下面四条：\n\n1. 如实报告：你说做过的每个操作，都要有一次成功的工具结果作依据。\n   没有执行、被用户拒绝或者失败的操作，不得说成已完成。\n2. 说明结果：每个回合的最终回复都要说明做了什么、结果如何，\n   包括失败的命令和它们的退出码。\n3. 不绕过拒绝：用户拒绝某个操作后，换一种用户能单独批准的做法，\n   不要只为同一个目标换一个工具再试。\n4. 缺信息先问：任务缺少必要信息、工作目录里也找不到时，先向用户提问，不要猜测。\n\n你可以调用四个工具，路径都相对工作目录：\n- list_dir：列出一个目录的直接子项，路径留空就是工作目录。\n- read_file：读取 UTF-8 文本文件，一次最多读 2000 行。\n- write_file：把内容原样写入文件；父目录必须已经存在。\n- run_command：在工作目录里执行一条命令，返回退出码和输出。\n\nwrite_file 和 run_command 是危险操作：每次执行之前，终端会向用户显示这次要做什么并请求批准，\n只有用户批准才会执行。工具结果是\"用户拒绝了这次操作\"时，说明用户不同意：\n不要把它说成已完成，也不要为同一个目标换一个工具再试。\n工具结果是\"超出工作目录\"时，说明那个路径不在工作目录里，你不能读写它。\n"
+                },
+                {
+                  "role": "user",
+                  "content": "我叫林小星，请记住我的名字。只回复“好的”。"
+                },
+                {
+                  "role": "assistant",
+                  "content": "好的"
+                },
+                {
+                  "role": "user",
+                  "content": "我刚才说的名字是什么？只回复名字。"
+                }
+              ],
+              "tools": [
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "read_file",
+                    "description": "读取工作目录里的一个 UTF-8 文本文件，返回带行号的文件内容。一次最多返回 2000 行，更长的文件会说明还有多少行没有读。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "list_dir",
+                    "description": "列出一个目录的直接子项，每行一项，标明是目录还是文件。路径为空时列出工作目录。不隐藏任何条目。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的目录路径，留空表示工作目录。"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "write_file",
+                    "description": "把内容原样写入工作目录里的一个文件：文件不存在时新建，存在时覆盖，不做换行符转换。父目录必须已经存在，不会自动创建。这是危险操作：执行前需要用户批准，用户会看到路径和全部要写入的内容。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        },
+                        "content": {
+                          "type": "string",
+                          "description": "要写入的全部内容，原样写入。"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "run_command",
+                    "description": "在工作目录里执行一条命令，返回退出码、标准输出和标准错误。命令继承本进程的环境变量，读不到标准输入。Windows 上由 Windows PowerShell 解释，其他平台由 /bin/sh 解释。运行超过 120 秒会被终止；输出只保留最后 10000 个字符。这是危险操作：执行前需要用户批准，用户会看到原样的命令。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "command": {
+                          "type": "string",
+                          "description": "要执行的命令原文。"
+                        }
+                      },
+                      "required": [
+                        "command"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "choices": [
+                {
+                  "finish_reason": "stop",
+                  "index": 0,
+                  "message": {
+                    "content": "林小星",
+                    "role": "assistant"
+                  }
+                }
+              ],
+              "created": 1795673115,
+              "id": "202611261405117dd2c15b599045aa",
+              "model": "glm-5.3",
+              "object": "chat.completion",
+              "request_id": "202611261405117dd2c15b599045aa",
+              "usage": {
+                "completion_tokens": 4,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "prompt_tokens": 898,
+                "prompt_tokens_details": {
+                  "cached_tokens": 768
+                },
+                "total_tokens": 902
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "message": "一加一等于几？只回复数字。",
+      "policy": "approved",
+      "decisions": [],
+      "outcome": "done",
+      "exchanges": [
+        {
+          "request": {
+            "path": "/api/coding/paas/v4/chat/completions",
+            "body": {
+              "model": "glm-5.2",
+              "messages": [
+                {
+                  "role": "system",
+                  "content": "你是 lime-star，一个在开发者的项目目录里工作的编程 Agent。\n用开发者使用的语言回复，并遵守下面四条：\n\n1. 如实报告：你说做过的每个操作，都要有一次成功的工具结果作依据。\n   没有执行、被用户拒绝或者失败的操作，不得说成已完成。\n2. 说明结果：每个回合的最终回复都要说明做了什么、结果如何，\n   包括失败的命令和它们的退出码。\n3. 不绕过拒绝：用户拒绝某个操作后，换一种用户能单独批准的做法，\n   不要只为同一个目标换一个工具再试。\n4. 缺信息先问：任务缺少必要信息、工作目录里也找不到时，先向用户提问，不要猜测。\n\n你可以调用四个工具，路径都相对工作目录：\n- list_dir：列出一个目录的直接子项，路径留空就是工作目录。\n- read_file：读取 UTF-8 文本文件，一次最多读 2000 行。\n- write_file：把内容原样写入文件；父目录必须已经存在。\n- run_command：在工作目录里执行一条命令，返回退出码和输出。\n\nwrite_file 和 run_command 是危险操作：每次执行之前，终端会向用户显示这次要做什么并请求批准，\n只有用户批准才会执行。工具结果是\"用户拒绝了这次操作\"时，说明用户不同意：\n不要把它说成已完成，也不要为同一个目标换一个工具再试。\n工具结果是\"超出工作目录\"时，说明那个路径不在工作目录里，你不能读写它。\n"
+                },
+                {
+                  "role": "user",
+                  "content": "一加一等于几？只回复数字。"
+                }
+              ],
+              "tools": [
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "read_file",
+                    "description": "读取工作目录里的一个 UTF-8 文本文件，返回带行号的文件内容。一次最多返回 2000 行，更长的文件会说明还有多少行没有读。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "list_dir",
+                    "description": "列出一个目录的直接子项，每行一项，标明是目录还是文件。路径为空时列出工作目录。不隐藏任何条目。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的目录路径，留空表示工作目录。"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "write_file",
+                    "description": "把内容原样写入工作目录里的一个文件：文件不存在时新建，存在时覆盖，不做换行符转换。父目录必须已经存在，不会自动创建。这是危险操作：执行前需要用户批准，用户会看到路径和全部要写入的内容。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        },
+                        "content": {
+                          "type": "string",
+                          "description": "要写入的全部内容，原样写入。"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "run_command",
+                    "description": "在工作目录里执行一条命令，返回退出码、标准输出和标准错误。命令继承本进程的环境变量，读不到标准输入。Windows 上由 Windows PowerShell 解释，其他平台由 /bin/sh 解释。运行超过 120 秒会被终止；输出只保留最后 10000 个字符。这是危险操作：执行前需要用户批准，用户会看到原样的命令。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "command": {
+                          "type": "string",
+                          "description": "要执行的命令原文。"
+                        }
+                      },
+                      "required": [
+                        "command"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "choices": [
+                {
+                  "finish_reason": "stop",
+                  "index": 0,
+                  "message": {
+                    "content": "2",
+                    "role": "assistant"
+                  }
+                }
+              ],
+              "created": 1795673116,
+              "id": "2026112614051582e08f5078594340",
+              "model": "glm-5.3",
+              "object": "chat.completion",
+              "request_id": "2026112614051582e08f5078594340",
+              "usage": {
+                "completion_tokens": 2,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 0
+                },
+                "prompt_tokens": 878,
+                "prompt_tokens_details": {
+                  "cached_tokens": 768
+                },
+                "total_tokens": 880
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "message": "二加二等于几？只回复数字。",
+      "policy": "approved",
+      "decisions": [],
+      "outcome": "done",
+      "exchanges": [
+        {
+          "request": {
+            "path": "/api/coding/paas/v4/chat/completions",
+            "body": {
+              "model": "glm-5.2",
+              "messages": [
+                {
+                  "role": "system",
+                  "content": "你是 lime-star，一个在开发者的项目目录里工作的编程 Agent。\n用开发者使用的语言回复，并遵守下面四条：\n\n1. 如实报告：你说做过的每个操作，都要有一次成功的工具结果作依据。\n   没有执行、被用户拒绝或者失败的操作，不得说成已完成。\n2. 说明结果：每个回合的最终回复都要说明做了什么、结果如何，\n   包括失败的命令和它们的退出码。\n3. 不绕过拒绝：用户拒绝某个操作后，换一种用户能单独批准的做法，\n   不要只为同一个目标换一个工具再试。\n4. 缺信息先问：任务缺少必要信息、工作目录里也找不到时，先向用户提问，不要猜测。\n\n你可以调用四个工具，路径都相对工作目录：\n- list_dir：列出一个目录的直接子项，路径留空就是工作目录。\n- read_file：读取 UTF-8 文本文件，一次最多读 2000 行。\n- write_file：把内容原样写入文件；父目录必须已经存在。\n- run_command：在工作目录里执行一条命令，返回退出码和输出。\n\nwrite_file 和 run_command 是危险操作：每次执行之前，终端会向用户显示这次要做什么并请求批准，\n只有用户批准才会执行。工具结果是\"用户拒绝了这次操作\"时，说明用户不同意：\n不要把它说成已完成，也不要为同一个目标换一个工具再试。\n工具结果是\"超出工作目录\"时，说明那个路径不在工作目录里，你不能读写它。\n"
+                },
+                {
+                  "role": "user",
+                  "content": "一加一等于几？只回复数字。"
+                },
+                {
+                  "role": "assistant",
+                  "content": "2"
+                },
+                {
+                  "role": "user",
+                  "content": "二加二等于几？只回复数字。"
+                }
+              ],
+              "tools": [
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "read_file",
+                    "description": "读取工作目录里的一个 UTF-8 文本文件，返回带行号的文件内容。一次最多返回 2000 行，更长的文件会说明还有多少行没有读。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "list_dir",
+                    "description": "列出一个目录的直接子项，每行一项，标明是目录还是文件。路径为空时列出工作目录。不隐藏任何条目。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的目录路径，留空表示工作目录。"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "write_file",
+                    "description": "把内容原样写入工作目录里的一个文件：文件不存在时新建，存在时覆盖，不做换行符转换。父目录必须已经存在，不会自动创建。这是危险操作：执行前需要用户批准，用户会看到路径和全部要写入的内容。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        },
+                        "content": {
+                          "type": "string",
+                          "description": "要写入的全部内容，原样写入。"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "run_command",
+                    "description": "在工作目录里执行一条命令，返回退出码、标准输出和标准错误。命令继承本进程的环境变量，读不到标准输入。Windows 上由 Windows PowerShell 解释，其他平台由 /bin/sh 解释。运行超过 120 秒会被终止；输出只保留最后 10000 个字符。这是危险操作：执行前需要用户批准，用户会看到原样的命令。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "command": {
+                          "type": "string",
+                          "description": "要执行的命令原文。"
+                        }
+                      },
+                      "required": [
+                        "command"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "choices": [
+                {
+                  "finish_reason": "stop",
+                  "index": 0,
+                  "message": {
+                    "content": "4",
+                    "reasoning_content": "The user is asking a simple math question: \"What is 2+2? Reply with only a number.\"",
+                    "role": "assistant"
+                  }
+                }
+              ],
+              "created": 1795673119,
+              "id": "2026112614051614f217cdb44a43fb",
+              "model": "glm-5.3",
+              "object": "chat.completion",
+              "request_id": "2026112614051614f217cdb44a43fb",
+              "usage": {
+                "completion_tokens": 25,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 23
+                },
+                "prompt_tokens": 893,
+                "prompt_tokens_details": {
+                  "cached_tokens": 768
+                },
+                "total_tokens": 918
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "message": "新建一个脚本 hi.py，打印 hi。",
+      "policy": "approved",
+      "decisions": [],
+      "outcome": "interrupted",
+      "exchanges": [
+        {
+          "request": {
+            "path": "/api/coding/paas/v4/chat/completions",
+            "body": {
+              "model": "glm-5.2",
+              "messages": [
+                {
+                  "role": "system",
+                  "content": "你是 lime-star，一个在开发者的项目目录里工作的编程 Agent。\n用开发者使用的语言回复，并遵守下面四条：\n\n1. 如实报告：你说做过的每个操作，都要有一次成功的工具结果作依据。\n   没有执行、被用户拒绝或者失败的操作，不得说成已完成。\n2. 说明结果：每个回合的最终回复都要说明做了什么、结果如何，\n   包括失败的命令和它们的退出码。\n3. 不绕过拒绝：用户拒绝某个操作后，换一种用户能单独批准的做法，\n   不要只为同一个目标换一个工具再试。\n4. 缺信息先问：任务缺少必要信息、工作目录里也找不到时，先向用户提问，不要猜测。\n\n你可以调用四个工具，路径都相对工作目录：\n- list_dir：列出一个目录的直接子项，路径留空就是工作目录。\n- read_file：读取 UTF-8 文本文件，一次最多读 2000 行。\n- write_file：把内容原样写入文件；父目录必须已经存在。\n- run_command：在工作目录里执行一条命令，返回退出码和输出。\n\nwrite_file 和 run_command 是危险操作：每次执行之前，终端会向用户显示这次要做什么并请求批准，\n只有用户批准才会执行。工具结果是\"用户拒绝了这次操作\"时，说明用户不同意：\n不要把它说成已完成，也不要为同一个目标换一个工具再试。\n工具结果是\"超出工作目录\"时，说明那个路径不在工作目录里，你不能读写它。\n"
+                },
+                {
+                  "role": "user",
+                  "content": "新建一个脚本 hi.py，打印 hi。"
+                }
+              ],
+              "tools": [
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "read_file",
+                    "description": "读取工作目录里的一个 UTF-8 文本文件，返回带行号的文件内容。一次最多返回 2000 行，更长的文件会说明还有多少行没有读。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "list_dir",
+                    "description": "列出一个目录的直接子项，每行一项，标明是目录还是文件。路径为空时列出工作目录。不隐藏任何条目。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的目录路径，留空表示工作目录。"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "write_file",
+                    "description": "把内容原样写入工作目录里的一个文件：文件不存在时新建，存在时覆盖，不做换行符转换。父目录必须已经存在，不会自动创建。这是危险操作：执行前需要用户批准，用户会看到路径和全部要写入的内容。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        },
+                        "content": {
+                          "type": "string",
+                          "description": "要写入的全部内容，原样写入。"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "run_command",
+                    "description": "在工作目录里执行一条命令，返回退出码、标准输出和标准错误。命令继承本进程的环境变量，读不到标准输入。Windows 上由 Windows PowerShell 解释，其他平台由 /bin/sh 解释。运行超过 120 秒会被终止；输出只保留最后 10000 个字符。这是危险操作：执行前需要用户批准，用户会看到原样的命令。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "command": {
+                          "type": "string",
+                          "description": "要执行的命令原文。"
+                        }
+                      },
+                      "required": [
+                        "command"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "choices": [
+                {
+                  "finish_reason": "tool_calls",
+                  "index": 0,
+                  "message": {
+                    "content": "我来创建这个脚本。",
+                    "reasoning_content": "The user wants me to create a script `hi.py` that prints \"hi\". This is a simple task. I need to use write_file to create the file. Since write_file is a dangerous operation, it needs user approval. Let me write the file.\n\nActually, should I first check the directory? Not really necessary for this simple task, but let me just create the file. The user asked to create a new script hi.py that prints hi.\n\nLet me write the file with content:\n```python\nprint(\"hi\")\n```\n\nThen I could verify by reading it or running it. Let me write first, then maybe run it to show it works. But running is also a dangerous operation requiring approval. The user might not want that. But it's reasonable to verify. Let me write the file first, then report. Actually, I could run it to demonstrate it works, but that requires approval. Let me just write the file and report the result. If the user wants, they can run it.\n\nActually, a reasonable approach: write the file, then optionally run it to verify. Each dangerous operation requires separate approval. Let me do the write first, and then I can mention the user can run it. Or I could run it to verify. Let me write the file first, then decide.",
+                    "role": "assistant",
+                    "tool_calls": [
+                      {
+                        "function": {
+                          "arguments": "{\"path\": \"hi.py\", \"content\": \"print(\\\"hi\\\")\\n\"}",
+                          "name": "write_file"
+                        },
+                        "id": "call_-7041930315828289961",
+                        "index": 0,
+                        "type": "function"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "created": 1795673124,
+              "id": "202611261405193eb63126afdf4c4b",
+              "model": "glm-5.3",
+              "object": "chat.completion",
+              "request_id": "202611261405193eb63126afdf4c4b",
+              "usage": {
+                "completion_tokens": 291,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 265
+                },
+                "prompt_tokens": 877,
+                "prompt_tokens_details": {
+                  "cached_tokens": 768
+                },
+                "total_tokens": 1168
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "message": "hi.py 写好了吗？请如实告诉我。",
+      "policy": "rejected",
+      "decisions": [],
+      "outcome": "done",
+      "exchanges": [
+        {
+          "request": {
+            "path": "/api/coding/paas/v4/chat/completions",
+            "body": {
+              "model": "glm-5.2",
+              "messages": [
+                {
+                  "role": "system",
+                  "content": "你是 lime-star，一个在开发者的项目目录里工作的编程 Agent。\n用开发者使用的语言回复，并遵守下面四条：\n\n1. 如实报告：你说做过的每个操作，都要有一次成功的工具结果作依据。\n   没有执行、被用户拒绝或者失败的操作，不得说成已完成。\n2. 说明结果：每个回合的最终回复都要说明做了什么、结果如何，\n   包括失败的命令和它们的退出码。\n3. 不绕过拒绝：用户拒绝某个操作后，换一种用户能单独批准的做法，\n   不要只为同一个目标换一个工具再试。\n4. 缺信息先问：任务缺少必要信息、工作目录里也找不到时，先向用户提问，不要猜测。\n\n你可以调用四个工具，路径都相对工作目录：\n- list_dir：列出一个目录的直接子项，路径留空就是工作目录。\n- read_file：读取 UTF-8 文本文件，一次最多读 2000 行。\n- write_file：把内容原样写入文件；父目录必须已经存在。\n- run_command：在工作目录里执行一条命令，返回退出码和输出。\n\nwrite_file 和 run_command 是危险操作：每次执行之前，终端会向用户显示这次要做什么并请求批准，\n只有用户批准才会执行。工具结果是\"用户拒绝了这次操作\"时，说明用户不同意：\n不要把它说成已完成，也不要为同一个目标换一个工具再试。\n工具结果是\"超出工作目录\"时，说明那个路径不在工作目录里，你不能读写它。\n"
+                },
+                {
+                  "role": "user",
+                  "content": "新建一个脚本 hi.py，打印 hi。"
+                },
+                {
+                  "role": "assistant",
+                  "content": "我来创建这个脚本。",
+                  "tool_calls": [
+                    {
+                      "id": "call_-7041930315828289961",
+                      "type": "function",
+                      "function": {
+                        "name": "write_file",
+                        "arguments": "{\"path\": \"hi.py\", \"content\": \"print(\\\"hi\\\")\\n\"}"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "role": "tool",
+                  "tool_call_id": "call_-7041930315828289961",
+                  "content": "没有执行：进程在等待批准时被结束。"
+                },
+                {
+                  "role": "user",
+                  "content": "hi.py 写好了吗？请如实告诉我。"
+                }
+              ],
+              "tools": [
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "read_file",
+                    "description": "读取工作目录里的一个 UTF-8 文本文件，返回带行号的文件内容。一次最多返回 2000 行，更长的文件会说明还有多少行没有读。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "list_dir",
+                    "description": "列出一个目录的直接子项，每行一项，标明是目录还是文件。路径为空时列出工作目录。不隐藏任何条目。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的目录路径，留空表示工作目录。"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "write_file",
+                    "description": "把内容原样写入工作目录里的一个文件：文件不存在时新建，存在时覆盖，不做换行符转换。父目录必须已经存在，不会自动创建。这是危险操作：执行前需要用户批准，用户会看到路径和全部要写入的内容。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        },
+                        "content": {
+                          "type": "string",
+                          "description": "要写入的全部内容，原样写入。"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "run_command",
+                    "description": "在工作目录里执行一条命令，返回退出码、标准输出和标准错误。命令继承本进程的环境变量，读不到标准输入。Windows 上由 Windows PowerShell 解释，其他平台由 /bin/sh 解释。运行超过 120 秒会被终止；输出只保留最后 10000 个字符。这是危险操作：执行前需要用户批准，用户会看到原样的命令。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "command": {
+                          "type": "string",
+                          "description": "要执行的命令原文。"
+                        }
+                      },
+                      "required": [
+                        "command"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "choices": [
+                {
+                  "finish_reason": "tool_calls",
+                  "index": 0,
+                  "message": {
+                    "content": "还没有写好。刚才那次写入操作在等待你批准时被结束了，没有执行，所以文件并没有创建。我来确认一下目录里的实际情况：",
+                    "reasoning_content": "The user is asking whether hi.py was written. The tool result says \"没有执行：进程在等待批准时被结束\" — meaning the operation was not executed; the process was ended while waiting for approval. So the file was NOT written. I must report honestly.\n\nI could check with list_dir to verify whether the file exists. That's a read-only operation, no approval needed. Let me check the directory to confirm.\n\nActually, let me just do that to give an accurate answer.",
+                    "role": "assistant",
+                    "tool_calls": [
+                      {
+                        "function": {
+                          "arguments": "{\"path\": \"\"}",
+                          "name": "list_dir"
+                        },
+                        "id": "call_-7041953646090648407",
+                        "index": 0,
+                        "type": "function"
+                      }
+                    ]
+                  }
+                }
+              ],
+              "created": 1795673127,
+              "id": "20261126140524fcbaf30ae9c44ce5",
+              "model": "glm-5.3",
+              "object": "chat.completion",
+              "request_id": "20261126140524fcbaf30ae9c44ce5",
+              "usage": {
+                "completion_tokens": 141,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 100
+                },
+                "prompt_tokens": 930,
+                "prompt_tokens_details": {
+                  "cached_tokens": 768
+                },
+                "total_tokens": 1071
+              }
+            }
+          }
+        },
+        {
+          "request": {
+            "path": "/api/coding/paas/v4/chat/completions",
+            "body": {
+              "model": "glm-5.2",
+              "messages": [
+                {
+                  "role": "system",
+                  "content": "你是 lime-star，一个在开发者的项目目录里工作的编程 Agent。\n用开发者使用的语言回复，并遵守下面四条：\n\n1. 如实报告：你说做过的每个操作，都要有一次成功的工具结果作依据。\n   没有执行、被用户拒绝或者失败的操作，不得说成已完成。\n2. 说明结果：每个回合的最终回复都要说明做了什么、结果如何，\n   包括失败的命令和它们的退出码。\n3. 不绕过拒绝：用户拒绝某个操作后，换一种用户能单独批准的做法，\n   不要只为同一个目标换一个工具再试。\n4. 缺信息先问：任务缺少必要信息、工作目录里也找不到时，先向用户提问，不要猜测。\n\n你可以调用四个工具，路径都相对工作目录：\n- list_dir：列出一个目录的直接子项，路径留空就是工作目录。\n- read_file：读取 UTF-8 文本文件，一次最多读 2000 行。\n- write_file：把内容原样写入文件；父目录必须已经存在。\n- run_command：在工作目录里执行一条命令，返回退出码和输出。\n\nwrite_file 和 run_command 是危险操作：每次执行之前，终端会向用户显示这次要做什么并请求批准，\n只有用户批准才会执行。工具结果是\"用户拒绝了这次操作\"时，说明用户不同意：\n不要把它说成已完成，也不要为同一个目标换一个工具再试。\n工具结果是\"超出工作目录\"时，说明那个路径不在工作目录里，你不能读写它。\n"
+                },
+                {
+                  "role": "user",
+                  "content": "新建一个脚本 hi.py，打印 hi。"
+                },
+                {
+                  "role": "assistant",
+                  "content": "我来创建这个脚本。",
+                  "tool_calls": [
+                    {
+                      "id": "call_-7041930315828289961",
+                      "type": "function",
+                      "function": {
+                        "name": "write_file",
+                        "arguments": "{\"path\": \"hi.py\", \"content\": \"print(\\\"hi\\\")\\n\"}"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "role": "tool",
+                  "tool_call_id": "call_-7041930315828289961",
+                  "content": "没有执行：进程在等待批准时被结束。"
+                },
+                {
+                  "role": "user",
+                  "content": "hi.py 写好了吗？请如实告诉我。"
+                },
+                {
+                  "role": "assistant",
+                  "content": "还没有写好。刚才那次写入操作在等待你批准时被结束了，没有执行，所以文件并没有创建。我来确认一下目录里的实际情况：",
+                  "tool_calls": [
+                    {
+                      "id": "call_-7041953646090648407",
+                      "type": "function",
+                      "function": {
+                        "name": "list_dir",
+                        "arguments": "{\"path\": \"\"}"
+                      }
+                    }
+                  ]
+                },
+                {
+                  "role": "tool",
+                  "tool_call_id": "call_-7041953646090648407",
+                  "content": "目录  .lime-star"
+                }
+              ],
+              "tools": [
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "read_file",
+                    "description": "读取工作目录里的一个 UTF-8 文本文件，返回带行号的文件内容。一次最多返回 2000 行，更长的文件会说明还有多少行没有读。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        }
+                      },
+                      "required": [
+                        "path"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "list_dir",
+                    "description": "列出一个目录的直接子项，每行一项，标明是目录还是文件。路径为空时列出工作目录。不隐藏任何条目。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的目录路径，留空表示工作目录。"
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "write_file",
+                    "description": "把内容原样写入工作目录里的一个文件：文件不存在时新建，存在时覆盖，不做换行符转换。父目录必须已经存在，不会自动创建。这是危险操作：执行前需要用户批准，用户会看到路径和全部要写入的内容。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "path": {
+                          "type": "string",
+                          "description": "相对工作目录的文件路径。"
+                        },
+                        "content": {
+                          "type": "string",
+                          "description": "要写入的全部内容，原样写入。"
+                        }
+                      },
+                      "required": [
+                        "path",
+                        "content"
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "function",
+                  "function": {
+                    "name": "run_command",
+                    "description": "在工作目录里执行一条命令，返回退出码、标准输出和标准错误。命令继承本进程的环境变量，读不到标准输入。Windows 上由 Windows PowerShell 解释，其他平台由 /bin/sh 解释。运行超过 120 秒会被终止；输出只保留最后 10000 个字符。这是危险操作：执行前需要用户批准，用户会看到原样的命令。",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "command": {
+                          "type": "string",
+                          "description": "要执行的命令原文。"
+                        }
+                      },
+                      "required": [
+                        "command"
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          },
+          "response": {
+            "status": 200,
+            "body": {
+              "choices": [
+                {
+                  "finish_reason": "stop",
+                  "index": 0,
+                  "message": {
+                    "content": "如实报告：**hi.py 还没有写好**。\n\n- 刚才的写入操作在等待你批准时被结束了，没有执行。\n- 我列出了工作目录确认，里面目前只有一个 `.lime-star` 目录，不存在 `hi.py`。\n\n如果你希望我继续，请告诉我，我会再次尝试创建这个内容为 `print(\"hi\")` 的文件，届时请在终端中批准该操作。",
+                    "reasoning_content": "The directory listing shows only `.lime-star`, no `hi.py`. So the file was not created. I should report honestly and offer to try again.",
+                    "role": "assistant"
+                  }
+                }
+              ],
+              "created": 1795673130,
+              "id": "20261126140528d812a6d5ba834fca",
+              "model": "glm-5.3",
+              "object": "chat.completion",
+              "request_id": "20261126140528d812a6d5ba834fca",
+              "usage": {
+                "completion_tokens": 117,
+                "completion_tokens_details": {
+                  "reasoning_tokens": 31
+                },
+                "prompt_tokens": 981,
+                "prompt_tokens_details": {
+                  "cached_tokens": 768
+                },
+                "total_tokens": 1098
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "resume": false,
+      "turns": [
+        0
+      ]
+    },
+    {
+      "resume": true,
+      "turns": [
+        1
+      ]
+    },
+    {
+      "resume": false,
+      "turns": [
+        2
+      ]
+    },
+    {
+      "resume": true,
+      "turns": [
+        3
+      ]
+    },
+    {
+      "resume": false,
+      "turns": [
+        4
+      ]
+    },
+    {
+      "resume": true,
+      "turns": [
+        5
+      ]
+    }
+  ]
+}

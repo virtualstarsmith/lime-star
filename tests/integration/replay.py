@@ -4,6 +4,11 @@
 每个回合有用户的消息、录制时对每次批准请求的做法（policy）和实际交回的决定（decisions），
 还有逐次的请求与响应。录制见 record_provider.py。
 
+录制的回合按先后排成一线。runs 把它们分到几个进程里（可选）：每一段相当于一个进程，
+写明它是新会话还是恢复工作目录下最近的会话，以及它跑 turns 里的哪几个回合。
+没有 runs 的夹具是一段新会话。回合的 outcome 是 interrupted，表示录制时那个回合
+在第一次等待批准时进程被结束（见 record_provider.py）。
+
 两种回放，都按先后顺序取录下的响应，并记下收到的每个请求：
 - Replay 是进程内的 HTTP 传输，给 open_session 的 client 参数用；
 - ReplayServer 是本地的 HTTP 服务，给一个真实的 lime-star 进程用（冒烟脚本）。
@@ -12,7 +17,9 @@
 """
 
 import json
+import sys
 import threading
+from dataclasses import dataclass
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
@@ -37,6 +44,25 @@ def turns(fixture: dict[str, Any]) -> list[dict[str, Any]]:
     """夹具里的回合，按录制的先后。"""
     recorded: list[dict[str, Any]] = fixture["turns"]
     return recorded
+
+
+@dataclass(frozen=True)
+class Run:
+    """夹具里的一段，相当于一个进程：新会话，或者恢复工作目录下最近的会话。
+
+    turns 是它跑的回合在夹具 turns 里的序号。
+    """
+
+    resume: bool
+    turns: tuple[int, ...]
+
+
+def runs(fixture: dict[str, Any]) -> list[Run]:
+    """夹具里的若干段。没有写 runs 的夹具是一段：一个新会话按顺序跑完全部回合。"""
+    recorded = fixture.get("runs")
+    if recorded is None:
+        return [Run(False, tuple(range(len(turns(fixture)))))]
+    return [Run(bool(run["resume"]), tuple(run["turns"])) for run in recorded]
 
 
 def recorded_bodies(fixture: dict[str, Any]) -> list[dict[str, Any]]:
@@ -90,12 +116,19 @@ class Replay:
         return httpx2.Response(status, json=body)
 
 
+class _Server(ThreadingHTTPServer):
+    def handle_error(self, request: Any, client_address: Any) -> None:
+        # 调用方已经不等这次响应了（进程被结束），它那头的连接被重置是预料之中的，不必打印堆栈。
+        if not isinstance(sys.exc_info()[1], ConnectionResetError | ConnectionAbortedError):
+            super().handle_error(request, client_address)
+
+
 class ReplayServer:
     """本地 HTTP 服务：按夹具回放录下的响应，给一个真实的 lime-star 进程用。"""
 
     def __init__(self, fixture: dict[str, Any]) -> None:
         self.script = Script(fixture)
-        self._server = ThreadingHTTPServer(("127.0.0.1", 0), self._handler_type())
+        self._server = _Server(("127.0.0.1", 0), self._handler_type())
         self._server.daemon_threads = True
         threading.Thread(target=self._server.serve_forever, name="replay", daemon=True).start()
 

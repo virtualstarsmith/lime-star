@@ -4,7 +4,8 @@
 由同一控制台里的宿主进程（console_host.py）投递按键和 Ctrl+C 事件。
 证据等级：Gate B，进程的输入输出是真实控制台；模型是测试替身。
 覆盖 R13.8-S1、R13.9-S1、R13.11-S1、R13.12-S1、R12.5-S2、R12.6-S1。
-路线图 P4 加入 R7.9-S1（在控制台上输入 y）和 R12.5-S1（命令运行中的 Ctrl+C 结束整棵进程树）。
+路线图 P4 加入 R7.9-S1（在控制台上输入 y）和 R12.5-S1（命令运行中的 Ctrl+C 结束整棵进程树）；
+路线图 P5 加入 R9.4-S2（真实的 Ctrl+C 之后，在新进程里 --resume）。
 管道驱动的用例补不到这里的 Ctrl+C：它必须是一次真实的控制台事件。
 """
 
@@ -23,13 +24,17 @@ from typing import Any
 import pytest
 
 from lime_star import __version__
+from lime_star.app import Outcome
 from lime_star.cli.chat import ASK
+from lime_star.protocol import TurnEnd
 from tests.integration.fake_model import FAKE_KEY, FakeModel, Hold
 from tests.integration.support import (
     PROMPT,
     SLEEPER,
+    CliProcess,
     alive,
     child_env,
+    entries_of,
     transcript_file,
     wait_for_log,
     wait_until,
@@ -418,3 +423,55 @@ def test_ctrl_c_while_a_command_runs_ends_the_whole_process_tree(
         "用户按 Ctrl+C 取消了回合，命令已被终止。截至那时已有的输出如下。\nstarted"
     )
     assert entries[4]["summary"] == "已取消，命令已终止"
+
+
+def test_resume_after_ctrl_c_while_a_command_ran_says_it_was_cancelled(
+    start_console: Callable[..., ConsoleSession],
+    lime_star: Path,
+    model_env: dict[str, str],
+    fake_model: FakeModel,
+    tmp_path: Path,
+) -> None:
+    """R9.3-S1、R9.4-S2、R9.5-S2：命令运行中按真实的 Ctrl+C，回合当场写下取消的结局。
+
+    之后在新进程里 --resume：一行说明之后写着上一个回合没有完成、原因是取消；之前的输出不重放，
+    接着还能对话。
+    """
+    (tmp_path / "sleeper.py").write_text(SLEEPER, encoding="utf-8")
+    command = "python sleeper.py"
+    fake_model.call(("run_command", {"command": command}))
+    session = start_console(model_env)
+    session.wait_for("stdout", PROMPT)
+    session.type("运行 sleeper.py")
+    session.wait_for("stdout", ASK)
+    session.type("y")
+    session.wait_for("stdout", "已批准。\n")
+    wait_until(lambda: (tmp_path / "pids.txt").exists())
+    session.ctrl_c()
+    session.wait_for("stdout", "已取消。\n" + PROMPT)
+    session.type("/exit")
+    assert session.finish() == 0
+    parent, child = map(int, (tmp_path / "pids.txt").read_text().split())
+    wait_until(lambda: not (alive(parent) or alive(child)))
+    path = transcript_file(tmp_path)
+    assert entries_of(path)[-1].item == TurnEnd(Outcome.CANCELLED, "用户按 Ctrl+C 取消")
+
+    fake_model.reply("上次的命令被取消了，没有跑完。")
+    resumed = CliProcess(lime_star, tmp_path, child_env(model_env), ["--resume"])
+    try:
+        resumed.wait_for("stdout", PROMPT)
+        assert resumed.output("stdout") == (
+            session.banner()
+            + f"已恢复会话 {path.stem}，已有 1 个回合。\n"
+            + "上一个回合没有完成：用户按 Ctrl+C 取消。\n"
+            + PROMPT
+        )
+        resumed.send("刚才的命令跑完了吗？")
+        resumed.wait_for("stdout", PROMPT, count=2)
+        resumed.send("/exit")
+        assert resumed.finish() == 0
+    finally:
+        resumed.close()
+    assert resumed.output("stderr") == ""
+    assert "已取消。\n" not in resumed.output("stdout")  # 不重放之前的输出
+    assert "上次的命令被取消了" in resumed.output("stdout")

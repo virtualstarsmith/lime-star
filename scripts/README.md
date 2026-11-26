@@ -15,8 +15,9 @@
 | `check-doc-links.mjs` | 文档交叉引用守卫：规则、计划、手册之间的相对引用不许断链；带目录的引用必须按路径在仓库内找到，只有裸文件名可按文件名全树查找 | `node scripts/check-doc-links.mjs [--root <dir>]` |
 | `scripts/security/check-secrets.mjs` | 密钥守卫：`.env` 必须被 Git 忽略且不被跟踪；已跟踪文件里不得出现常见格式的密钥。报出位置和规则名，不回显密钥 | `node scripts/security/check-secrets.mjs [--root <dir>]` |
 | `scripts/smoke/agent_gate_b.py` | Gate B 冒烟（Python，路线图 P4）：在真实进程里跑 MVP 主场景，对着会话记录和磁盘断言；默认回放录制的夹具，不联网 | `uv run python scripts/smoke/agent_gate_b.py [--live]` |
+| `scripts/smoke/resume_gate_b.py` | 恢复的 Gate B 冒烟（Python，路线图 P5）：六个真实的 lime-star 进程先后在同一个工作目录里运行，其中一次在批准提示处被强制结束，之后的进程带 `--resume`；对着会话记录、请求日志和磁盘断言。默认回放录制的夹具，不联网 | `uv run python scripts/smoke/resume_gate_b.py [--live]` |
 
-治理脚本零依赖（Node 18 或更高），必须在**仓库根目录**运行，违规时退出码非零。冒烟脚本是 Python，经 uv 运行，不属于治理脚本。
+治理脚本零依赖（Node 18 或更高），必须在**仓库根目录**运行，违规时退出码非零。冒烟脚本是 Python，经 uv 运行，不属于治理脚本；两个冒烟脚本共用的小工具在 `tests/integration/smoke.py`，它们也借用 tests 里驱动真实进程和回放的小工具。冒烟脚本在 mypy 的检查范围里（pyproject.toml 的 files 含 scripts），verify-local 的 lint 和 typecheck 任务由 `scripts/smoke/` 的改动触发。
 
 ## 接入状态
 

@@ -46,7 +46,9 @@ select = ["E", "F", "W", "I", "B", "UP"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", "scripts"]
+# 冒烟脚本放在 scripts/smoke 下，它导入 tests 里的小工具：从仓库根找模块。
+mypy_path = "$MYPY_CONFIG_FILE_DIR"
 
 [[tool.mypy.overrides]]
 # 测试放宽：不强制写类型标注，其余严格项保留。

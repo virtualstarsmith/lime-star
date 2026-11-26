@@ -8,6 +8,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Sequence
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -15,7 +16,8 @@ import httpx2
 import pytest
 from openai import OpenAI
 
-from lime_star.protocol import Entry, Item, TurnEnd
+from lime_star.protocol import ENVELOPE, ITEM_KINDS, Entry, Item, Outcome, TurnEnd
+from lime_star.thread_store import Busy, Hold
 from tests.integration.fake_model import FAKE_KEY, FakeModel
 
 PROMPT = "你> "
@@ -53,6 +55,14 @@ RECORD_KEYS = [
 """请求日志一条记录的全部字段（需求 R3.1）。"""
 
 
+class Died(BaseException):
+    """模拟进程在某一次等待中途被结束。
+
+    它不是 Exception：注册表和回合循环都不接它，回合就地停住，不补写结果，也不写结局，
+    会话记录里留下的项与真实进程被强制结束时相同。真实进程的证据在真实进程的用例和冒烟脚本里。
+    """
+
+
 def client_for(model: FakeModel) -> OpenAI:
     """指向替身服务的客户端。不读环境里的代理设置，关掉自动重试。"""
     return OpenAI(
@@ -78,6 +88,19 @@ def wait_until(condition: Callable[[], bool], timeout: float = 10.0) -> None:
         if time.monotonic() > deadline:
             raise AssertionError(f"场景：等待条件成立；超时 {timeout} 秒")
         time.sleep(0.005)
+
+
+def wait_released(workdir: Path, thread_id: str, timeout: float = 10.0) -> None:
+    """等到一个会话的独占写入放开。进程被强制结束之后，锁要过一会儿才释放。"""
+
+    def free() -> bool:
+        try:
+            Hold.take(workdir, thread_id).release()
+        except Busy:
+            return False
+        return True
+
+    wait_until(free, timeout)
 
 
 def wait_for_log(path: Path, count: int, timeout: float = 10.0) -> list[dict[str, Any]]:
@@ -123,9 +146,10 @@ def run_lime_star(exe: Path, args: list[str], cwd: Path) -> subprocess.Completed
 class CliProcess:
     """通过管道驱动一个真实的 lime-star 进程：写一行输入、等某一路输出、收尾。"""
 
-    def __init__(self, exe: Path, cwd: Path, env: dict[str, str]) -> None:
+    def __init__(self, exe: Path, cwd: Path, env: dict[str, str], args: Sequence[str] = ()) -> None:
+        """args 是命令行参数，例如 ("--resume",)；不给就是不带参数启动。"""
         self.process: subprocess.Popen[bytes] = subprocess.Popen(
-            [str(exe)],
+            [str(exe), *args],
             cwd=cwd,
             env=env,
             stdin=subprocess.PIPE,
@@ -212,6 +236,33 @@ class CliProcess:
                 pipe.close()
 
 
+KINDS = {kind.kind: kind for kind in ITEM_KINDS}
+
+
+def lines_of(path: Path) -> list[dict[str, Any]]:
+    """用例自己解析会话记录文件：只取完整的行，不经过产品的读回代码。"""
+    return [json.loads(line) for line in path.read_bytes().split(b"\n")[:-1]]
+
+
+def entries_of(path: Path) -> list[Entry]:
+    """按文件里的每一行自己拼出项，不经过产品的读回代码。"""
+    entries = []
+    for line in lines_of(path):
+        payload = {key: value for key, value in line.items() if key not in (*ENVELOPE, "type")}
+        if line["type"] == "turn_end":
+            payload["outcome"] = Outcome(payload["outcome"])
+        entries.append(
+            Entry(
+                line["seq"],
+                datetime.fromisoformat(line["time"]),
+                line["thread_id"],
+                line["turn_id"],
+                KINDS[line["type"]](**payload),
+            )
+        )
+    return entries
+
+
 def written(entries: Sequence[Entry]) -> tuple[Item, ...]:
     """会话记录里的项，不带信封，按写入顺序。"""
     return tuple(entry.item for entry in entries)
@@ -227,9 +278,14 @@ def endings(entries: Sequence[Entry]) -> list[TurnEnd]:
     return [entry.item for entry in entries if isinstance(entry.item, TurnEnd)]
 
 
+def transcript_files(workdir: Path) -> list[Path]:
+    """工作目录里全部会话记录的文件，按名称排序。"""
+    return sorted((workdir / ".lime-star" / "threads").glob("*.jsonl"))
+
+
 def transcript_file(workdir: Path) -> Path:
     """工作目录里那一份会话记录。这里的工作目录只开过一个会话，所以它只有一个文件。"""
-    files = sorted((workdir / ".lime-star" / "threads").glob("*.jsonl"))
+    files = transcript_files(workdir)
     assert len(files) == 1, f"场景：工作目录里应当只有一份会话记录，实际有 {len(files)} 份"
     return files[0]
 

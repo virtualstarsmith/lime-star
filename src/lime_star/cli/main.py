@@ -1,6 +1,7 @@
 """lime-star 命令入口。
 
---version、--help 和未知参数见需求 R1；不带参数时在工作目录开始会话（R13.1）。
+--version、--help 和未知参数见需求 R1；不带参数时在工作目录开始会话（R13.1）；
+--resume 恢复工作目录下最近的会话（R9.1）。
 退出码只有三种（R13.10）：0 正常结束，1 运行期错误，2 用法或配置错误。
 """
 
@@ -13,7 +14,14 @@ from pathlib import Path
 from typing import TextIO
 
 from lime_star import __version__
-from lime_star.app import ConfigError, SessionError, open_session
+from lime_star.app import (
+    ConfigError,
+    NoSession,
+    Recap,
+    SessionError,
+    open_session,
+    resume_session,
+)
 from lime_star.cli.chat import StdinLines, chat
 
 EXIT_OK = 0
@@ -23,24 +31,27 @@ EXIT_USAGE = 2
 PROG = "lime-star"
 
 USAGE = """\
-用法：lime-star [--version]
+用法：lime-star [--version | --resume]
 
 不带参数：在工作目录开始一个会话
+带 --resume：恢复工作目录下最近的会话，接着对话
 
 选项：
   --version    显示版本号并退出
+  --resume     恢复工作目录下最近的会话并继续对话
   -h, --help   显示这份帮助并退出
 """
 
-KNOWN_FLAGS = frozenset({"--version", "-h", "--help"})
+KNOWN_FLAGS = frozenset({"--version", "--resume", "-h", "--help"})
 
 
 @dataclass(frozen=True)
 class Args:
     """解析后的命令行参数。"""
 
-    show_version: bool
-    show_help: bool
+    show_version: bool = False
+    show_help: bool = False
+    resume: bool = False
 
 
 class UsageError(Exception):
@@ -58,6 +69,7 @@ def parse_args(argv: Sequence[str]) -> Args:
     return Args(
         show_version="--version" in argv,
         show_help="-h" in argv or "--help" in argv,
+        resume="--resume" in argv,
     )
 
 
@@ -77,16 +89,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     if parsed.show_help:
         sys.stdout.write(USAGE)
         return EXIT_OK
-    return run_chat()
+    return run_chat(parsed.resume)
 
 
-def run_chat() -> int:
-    """不带参数：读取配置，开始会话。"""
+def run_chat(resume: bool = False) -> int:
+    """开始会话：不带参数时新建一个；resume 为真时恢复工作目录下最近的那个。"""
     workdir = Path.cwd()
+    recap: Recap | None = None
     try:
-        session = open_session(env=os.environ, workdir=workdir)
+        if resume:
+            session, recap = resume_session(env=os.environ, workdir=workdir)
+        else:
+            session = open_session(env=os.environ, workdir=workdir)
     except ConfigError as exc:
         sys.stderr.write(f"{PROG}：{exc.message}\n")
+        return EXIT_USAGE
+    except NoSession as exc:
+        sys.stderr.write(f"{PROG}：{exc}\n")
         return EXIT_USAGE
     except SessionError as exc:
         sys.stderr.write(f"{PROG}：{exc}\n")
@@ -98,11 +117,13 @@ def run_chat() -> int:
     lines = StdinLines(sys.stdin)
     lines.start()
     try:
-        return chat(session, lines, sys.stdout, sys.stderr, workdir)
+        return chat(session, lines, sys.stdout, sys.stderr, workdir, recap)
     except KeyboardInterrupt:
         return EXIT_OK
     except Exception as exc:
         return _runtime_error(exc)
+    finally:
+        session.close()
 
 
 def _runtime_error(exc: Exception) -> int:

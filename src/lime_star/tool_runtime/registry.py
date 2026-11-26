@@ -76,6 +76,10 @@ class Registry:
         """全部工具的说明，按登记顺序。"""
         return tuple(self._tools.values())
 
+    def dangerous(self) -> frozenset[str]:
+        """要先经批准才执行的那些工具的名称（决策 D-19）。"""
+        return frozenset(name for name, tool in self._tools.items() if tool.danger is not None)
+
     def execute(self, call: ToolCall, approve: Approver | None = None) -> ToolResult:
         """执行一次调用，总是返回一条结果。
 

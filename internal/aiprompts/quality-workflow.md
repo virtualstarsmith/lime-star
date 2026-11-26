@@ -34,7 +34,7 @@
 | Python 源码与测试 | ruff check、ruff format 检查、mypy、pytest（路线图 P0 起由 verify:local 按路径触发） | 无 |
 | 协议、契约、schema | 定向契约测试 | `npm run test:contracts` |
 | 依赖声明 | `uv lock --check` | verify:local 全量 |
-| 业务主链 | Current fixture 加 Gate B 冒烟：`uv run pytest tests/integration/test_fixture.py -q` 和 `uv run python scripts/smoke/agent_gate_b.py`（模型为回放夹具；加 `--live` 用真实模型） | 无 |
+| 业务主链 | Current fixture 加 Gate B 冒烟：`uv run pytest tests/integration/test_fixture.py -q`、`uv run python scripts/smoke/agent_gate_b.py` 和 `uv run python scripts/smoke/resume_gate_b.py`（模型都是回放夹具；加 `--live` 用真实模型） | 无 |
 
 每行都必须绑定可执行命令；尚未接入的命令随路线图对应阶段补齐，补齐之前不得在收尾报告里写成已验证。
 

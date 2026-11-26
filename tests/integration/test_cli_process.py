@@ -7,7 +7,8 @@ P0 的用例覆盖 R1.1 到 R1.3。P1 的用例通过管道驱动一个真实的
 （本地替身服务，脚本化响应，没有从真实运行录制），不是真实模型。
 覆盖 R3.1、R3.2-S1、R4.1-S1、R4.2-S1、R4.3-S1、R4.3-S2、R13.1-S1、R13.2-S1、
 R13.3-S1、R13.4-S1、R13.5、R13.6-S1、R13.7-S1、R13.8-S1、R13.9-S1、R13.10、R13.13-S1。
-路线图 P2 加入 R12.3：达到步数上限时的终端说明。
+路线图 P2 加入 R12.3：达到步数上限时的终端说明。路线图 P5 加入 R9.1-S3（帮助里的 --resume）；
+真实进程里的恢复在 test_cli_resume.py。
 路线图 P4 加入批准提示：R7.6 到 R7.11、R7.13 里真实进程的部分。断言同时看终端输出和会话记录文件。
 """
 
@@ -59,10 +60,12 @@ def test_help_lists_version_with_description(lime_star: Path, tmp_path: Path) ->
     assert result.stderr == ""
 
 
-def test_help_does_not_list_resume_yet(lime_star: Path, tmp_path: Path) -> None:
-    """R1.3 的边界：--resume 由路线图 P5 交付，在那之前帮助里不列它。"""
+def test_help_lists_resume(lime_star: Path, tmp_path: Path) -> None:
+    """R9.1-S3、R1.2：--resume 已交付，帮助里有它和一句话说明。"""
     result = run_lime_star(lime_star, ["--help"], tmp_path)
-    assert "--resume" not in result.stdout
+    assert result.returncode == 0
+    assert "--resume     恢复工作目录下最近的会话并继续对话" in result.stdout
+    assert result.stderr == ""
 
 
 def test_unknown_argument_exits_two_and_names_it(lime_star: Path, tmp_path: Path) -> None:

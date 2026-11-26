@@ -18,12 +18,17 @@ Json = str | int | float | bool | None | list["Json"] | dict[str, "Json"]
 
 
 class Outcome(StrEnum):
-    """回合的结局（R12.7）。步数上限见 R12.3。"""
+    """回合的结局（R12.7）。步数上限见 R12.3。
+
+    interrupted 是进程没有收尾就结束的回合：它有开始、没有结局，
+    由读取会话记录的一方判为中断并补上（R9.3）。它和 cancelled 分开：后者是用户按 Ctrl+C 取消的。
+    """
 
     DONE = "done"
     ERROR = "error"
     CANCELLED = "cancelled"
     STEP_LIMIT = "step_limit"
+    INTERRUPTED = "interrupted"
 
 
 @dataclass(frozen=True)

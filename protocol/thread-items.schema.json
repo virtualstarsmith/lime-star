@@ -116,10 +116,10 @@
       "required": []
     },
     "turn_end": {
-      "description": "一个回合的结局和原因。完成时原因为空串。",
+      "description": "一个回合的结局和原因。完成时原因为空串。interrupted 是进程没有收尾就结束的回合：它有开始、没有结局，由读取会话记录的一方在恢复时补上，补上之前它的工具调用先各有一条结果。",
       "properties": {
         "type": { "const": "turn_end" },
-        "outcome": { "enum": ["done", "error", "cancelled", "step_limit"] },
+        "outcome": { "enum": ["done", "error", "cancelled", "step_limit", "interrupted"] },
         "reason": { "type": "string" }
       },
       "required": ["outcome", "reason"]

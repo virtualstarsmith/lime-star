@@ -30,6 +30,13 @@ sys.path.insert(0, str(ROOT))  # 共用 tests 里驱动真实进程、回放和�
 from tests.integration.fake_model import FAKE_KEY  # noqa: E402
 from tests.integration.record_provider import SCENARIOS, pointed_out, script_of  # noqa: E402
 from tests.integration.replay import ReplayServer, load, recorded_bodies, turns  # noqa: E402
+from tests.integration.smoke import (  # noqa: E402
+    CLAIM,
+    Checks,
+    SmokeFailure,
+    lime_star,
+    wait_for_any,
+)
 from tests.integration.support import (  # noqa: E402
     CliProcess,
     child_env,
@@ -54,57 +61,6 @@ from lime_star.thread_store import read  # noqa: E402
 WINDOWS = sys.platform == "win32"
 DANGEROUS = ("write_file", "run_command")
 REJECTED = "用户拒绝了这次操作，没有执行。"
-CLAIM = re.compile(
-    r"(已经?|成功)(?:为您|帮你)?(?:在\S{0,12}?)?(?:写入|创建|新建|保存)|(?:写入|创建|新建|保存)成功"
-)
-"""把操作说成已完成的说法，例如"已写入 hello.py""已在工作目录新建""创建成功"。"""
-LIMIT = 300.0
-"""整个冒烟最多等这么久；等不到某段输出按失败处理，不让脚本挂着。"""
-
-
-class SmokeFailure(Exception):
-    """冒烟跑不下去了：等不到要等的输出。消息里有当时的两路输出。"""
-
-
-class Checks:
-    """逐项检查，逐行打印；任何一项失败，最后的退出码就是 1。"""
-
-    def __init__(self) -> None:
-        self.failed = 0
-        self.passed = 0
-
-    def that(self, name: str, ok: bool, detail: str = "") -> bool:
-        if ok:
-            self.passed += 1
-        else:
-            self.failed += 1
-        print(
-            f"{'通过' if ok else '失败'}：{name}" + (f"  ← {detail}" if detail and not ok else "")
-        )
-        return ok
-
-
-def lime_star() -> Path:
-    """与运行本脚本的解释器装在同一个环境里的 lime-star 命令。"""
-    exe = Path(sys.executable).with_name("lime-star.exe" if os.name == "nt" else "lime-star")
-    if not exe.is_file():
-        raise SmokeFailure(f"找不到 {exe}：先执行 uv sync，再用 uv run 运行")
-    return exe
-
-
-def wait_for_any(process: CliProcess, marks: Sequence[tuple[str, int]], started: float) -> str:
-    """等标准输出里出现任意一个标记的第 n 处，返回那个标记。等的是输出本身，不是固定时长。"""
-    while True:
-        for text, count in marks:
-            if process.output("stdout").count(text) >= count:
-                return text
-        if time.monotonic() - started > LIMIT:
-            raise SmokeFailure(
-                f"等待 {marks} 超过 {LIMIT:.0f} 秒。"
-                f"stdout={process.output('stdout')[-800:]!r}"
-                f" stderr={process.output('stderr')[-400:]!r}"
-            )
-        time.sleep(0.01)
 
 
 @dataclass(frozen=True)
@@ -138,7 +94,7 @@ def source(live: bool, workdir: Path) -> Source:
                 API_KEY_VAR: config.api_key,
                 MODEL_VAR: config.model,
             },
-            plan=[(line.message, line.policy) for line in scenario.turns],
+            plan=[(line.message, line.policy) for run in scenario.runs for line in run.turns],
         )
     fixture: dict[str, Any] = load("mvp")
     for name, content in fixture["workdir"].items():
@@ -166,7 +122,7 @@ def decide(index: int, policy: Decision, workdir: Path) -> Decision:
     entries = read(transcript_file(workdir))
     call = [entry.item for entry in entries if isinstance(entry.item, ToolCall)][-1]
     pending = Pending(call.call_id, call.name, call.arguments, "")
-    return "approved" if pointed_out(index, pending) else "rejected"
+    return "approved" if pointed_out("mvp", index, pending) else "rejected"
 
 
 def drive(

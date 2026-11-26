@@ -4,7 +4,8 @@
 test_cli_process.py。Ctrl+C 用 _thread.interrupt_main() 模拟：它和真实 Ctrl+C 一样
 在主线程里挂起一个中断，但不经过控制台。模型是测试替身。
 覆盖 R13.1-S1、R13.3-S1、R13.4-S1、R13.9-S1、R13.11-S1、R13.12-S1、R13.13-S1；
-路线图 P3 加入 R13.14-S1、R13.14-S2、R13.15-S1（工具调用和结果摘要的显示）。
+路线图 P3 加入 R13.14-S1、R13.14-S2、R13.15-S1（工具调用和结果摘要的显示）；
+路线图 P5 加入恢复会话时的说明（R9.1、R9.4-S2、R9.5-S2）。
 """
 
 import io
@@ -12,16 +13,19 @@ import json
 import queue
 import threading
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 
 from lime_star import __version__
-from lime_star.app import Outcome, Session
-from lime_star.cli.chat import ASK, PROMPT, InputError, StdinLines, chat
+from lime_star.app import Outcome, Session, resume_session
+from lime_star.cli.chat import ASK, PROMPT, InputError, StdinLines, chat, project
+from lime_star.protocol import Entry, TurnEnd
+from lime_star.thread_store.turns import NOT_CLOSED
 from tests.integration.fake_model import FAKE_KEY, FakeModel, Hold
-from tests.integration.support import endings, wait_until
+from tests.integration.support import client_for, endings, wait_until
 
 BLANK_LINES = 3
 
@@ -509,3 +513,88 @@ def test_unreadable_input_at_the_approval_prompt_rejects(
         + PROMPT
     )
     assert not (tmp_path / "hello.py").exists()
+
+
+def test_resume_shows_the_recap_and_why_the_last_turn_did_not_finish(
+    make_session: Any,
+    fake_model: FakeModel,
+    model_env: dict[str, str],
+    ctrl_c: Any,
+    tmp_path: Path,
+) -> None:
+    """R9.1、R9.4-S2、R9.5-S2（交互循环这一层）：取消之后退出，恢复时显示一行概况和上一回合没有完成的原因。
+
+    之前的输出不重放；恢复后的对话带上取消之前的历史。
+    """
+    hold = Hold()
+    fake_model.reply("迟到的回复", hold=hold)
+    first: Session = make_session()
+    lines = ScriptedLines()
+    lines.feed("第一问")
+    out, err = io.StringIO(), io.StringIO()
+
+    def after_cancel() -> None:
+        wait_until(lambda: out.getvalue().count(PROMPT) >= 2)
+        hold.release()
+        lines.feed("/exit")
+
+    in_thread(after_cancel)
+    ctrl_c(lambda: len(fake_model.requests()) >= 1)
+    assert chat(first, lines, out, err, tmp_path) == 0
+    first.close()
+
+    fake_model.reply("第二答")
+    resumed, recap = resume_session(env=model_env, workdir=tmp_path, client=client_for(fake_model))
+    lines = ScriptedLines()
+    lines.feed("第二问")
+    lines.feed("/exit")
+    out, err = io.StringIO(), io.StringIO()
+    assert chat(resumed, lines, out, err, tmp_path, recap) == 0
+    assert out.getvalue() == (
+        banner(tmp_path)
+        + f"已恢复会话 {recap.thread_id}，已有 1 个回合。\n"
+        + "上一个回合没有完成：用户按 Ctrl+C 取消。\n"
+        + PROMPT
+        + "第二答\n"
+        + PROMPT
+    )
+    assert (err.getvalue(), FAKE_KEY in out.getvalue()) == ("", False)
+    [_, second] = fake_model.requests()
+    assert [message["content"] for message in second.messages[1:]] == ["第一问", "第二问"]
+
+
+def test_resume_of_a_finished_session_shows_one_line_only(
+    make_session: Any, fake_model: FakeModel, model_env: dict[str, str], tmp_path: Path
+) -> None:
+    """R9.1、R9.5-S2（交互循环这一层）：上一个回合正常完成时只有一行说明，之前的输出不重放。"""
+    fake_model.reply("第一答，这句话不该再出现")
+    first: Session = make_session()
+    first.start_turn("第一问")
+    first.close()
+    fake_model.reply("第二答")
+    resumed, recap = resume_session(env=model_env, workdir=tmp_path, client=client_for(fake_model))
+    lines = ScriptedLines()
+    lines.feed("第二问")
+    lines.feed("/exit")
+    out, err = io.StringIO(), io.StringIO()
+    assert chat(resumed, lines, out, err, tmp_path, recap) == 0
+    assert (out.getvalue(), err.getvalue()) == (
+        banner(tmp_path)
+        + f"已恢复会话 {recap.thread_id}，已有 1 个回合。\n"
+        + PROMPT
+        + "第二答\n"
+        + PROMPT,
+        "",
+    )
+
+
+def test_an_interrupted_ending_is_projected_with_its_reason() -> None:
+    """结局多了一种 interrupted：投影时照实写出原因。恢复时它不经过投影（补记在显示之前就做完了），
+    这里只固定它被投影出来的样子。"""
+    out, err = io.StringIO(), io.StringIO()
+    project(
+        Entry(9, datetime.now(UTC), "t", "u", TurnEnd(Outcome.INTERRUPTED, NOT_CLOSED)),
+        out,
+        err,
+    )
+    assert (out.getvalue(), err.getvalue()) == (f"回合中断：{NOT_CLOSED}。\n", "")

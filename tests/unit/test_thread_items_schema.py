@@ -41,6 +41,7 @@ SAMPLES: list[Item] = [
     Approval(call_id="c2", name="run_command", arguments="{}", decision="rejected"),
     TurnStart(),
     TurnEnd(outcome=Outcome.DONE, reason=""),
+    TurnEnd(outcome=Outcome.INTERRUPTED, reason="进程没有收尾就结束了"),
 ]
 
 

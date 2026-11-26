@@ -49,14 +49,15 @@ const TASKS = [
     prefixes: ['pyproject.toml'],
     cmd: 'uv lock --check',
   },
+  // 冒烟脚本是 Python（路线图 P5 起纳入检查范围，技术债 CCD-005）：改 scripts/smoke/ 也要过 lint 和 typecheck。
   {
     name: 'lint',
-    prefixes: ['src/', 'tests/'],
+    prefixes: ['src/', 'tests/', 'scripts/smoke/'],
     cmd: 'uv run ruff check . && uv run ruff format --check .',
   },
   {
     name: 'typecheck',
-    prefixes: ['src/', 'tests/'],
+    prefixes: ['src/', 'tests/', 'scripts/smoke/'],
     cmd: 'uv run mypy',
   },
   {
@@ -70,6 +71,13 @@ const TASKS = [
     name: 'smoke:gate-b',
     prefixes: ['src/lime_star/', 'scripts/smoke/', 'tests/integration/', 'tests/fixtures/provider/'],
     cmd: 'uv run python scripts/smoke/agent_gate_b.py',
+  },
+  // 恢复的 Gate B 冒烟（路线图 P5 接入）：真实的 lime-star 进程在批准提示处被强制结束，
+  // 新进程带 --resume 恢复。同样默认回放夹具，不联网，不需要密钥。
+  {
+    name: 'smoke:resume',
+    prefixes: ['src/lime_star/', 'scripts/smoke/', 'tests/integration/', 'tests/fixtures/provider/'],
+    cmd: 'uv run python scripts/smoke/resume_gate_b.py',
   },
   // 治理脚本的回归用例（路线图 P1 接入）：改了 scripts/ 就要验证脚本的行为，不只是查格式。
   {

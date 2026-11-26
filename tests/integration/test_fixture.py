@@ -3,22 +3,35 @@ Current fixture：用录制的真实响应驱动完整主链（需求 R11.1、R1
 
 证据等级：Current fixture。模型是回放夹具：响应录自真实模型的一次会话，这里不联网，
 所以它证明的不是"真实模型现在会这样回答"，而是"真实形状的响应能走通主链"。
-两份夹具：read_file（P3 录制）和 mvp（P4 录制，三个回合：主场景、拒绝写文件、失败的命令）。
+三份夹具：read_file（P3 录制）、mvp（P4 录制，三个回合：主场景、拒绝写文件、失败的命令），
+以及 resume（P5 录制，六个回合分在六个进程里，其中一次在等待批准时进程被结束）。
 """
 
 import json
 import re
 import socket
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from lime_star.app import Session, open_session
+from lime_star.app import Recap, Session, open_session, resume_session
 from lime_star.model_provider import API_KEY_VAR, BASE_URL_VAR, MODEL_VAR
-from lime_star.protocol import Approval, Decision, Pending, ToolCall, ToolResult
+from lime_star.protocol import (
+    Approval,
+    Decision,
+    Outcome,
+    Pending,
+    ToolCall,
+    ToolResult,
+    TurnEnd,
+)
+from lime_star.thread_store import read
+from lime_star.thread_store.turns import NOT_CLOSED, WAITING
 from tests.integration.fake_model import FAKE_KEY
-from tests.integration.replay import BASE_URL, Replay, load, recorded_bodies, turns
+from tests.integration.replay import BASE_URL, Replay, load, recorded_bodies, runs, turns
+from tests.integration.support import Died, transcript_files
 
 ROOT = Path(__file__).resolve().parents[2]
 PRODUCT = ROOT / "src" / "lime_star"
@@ -164,3 +177,77 @@ def test_the_recorded_replies_follow_the_report_rules() -> None:
     assert not CLAIM.search(replies[1]), replies[1]
     assert "拒绝" in replies[1]
     assert "失败" in replies[2] and "退出码" in replies[2] and "1" in replies[2]
+
+
+def test_the_recorded_resume_runs_drive_the_whole_chain(tmp_path: Path) -> None:
+    """R9.1、R9.2-S1、R9.3-S2、R11.1-S1：录制的恢复场景分在几个进程里，这里在同一个进程里按段回放。
+
+    每一段相当于一个进程：新会话，或者恢复工作目录下最近的会话；段与段之间先放开上一个会话的独占写入。
+    录制时在等待批准中被结束的那个回合，这里照录制的办法模拟：不回应批准，回合就地停住。
+    恢复时它被判为中断，补上结果和结局；之后发给模型的内容与录制时逐项相同（系统指令除外）。
+    模型为回放夹具。
+    """
+    fixture: dict[str, Any] = load("resume")
+    stage(fixture, tmp_path)
+    replay = Replay(fixture)
+    env = {
+        BASE_URL_VAR: BASE_URL,
+        API_KEY_VAR: FAKE_KEY,
+        MODEL_VAR: str(fixture["model"]),
+    }
+    client = replay.client()
+    recaps: list[Recap | None] = []
+    held: Session | None = None
+    try:
+        for run in runs(fixture):
+            if held is not None:
+                held.close()  # 相当于上一个进程退出：独占写入随之放开
+            if run.resume:
+                held, recap = resume_session(env=env, workdir=tmp_path, client=client)
+            else:
+                held, recap = open_session(env=env, workdir=tmp_path, client=client), None
+            recaps.append(recap)
+            for index in run.turns:
+                turn = turns(fixture)[index]
+                message, policy = str(turn["message"]), turn["policy"]
+                if turn["outcome"] == "interrupted":
+                    with pytest.raises(Died):
+                        held.start_turn(message, ask=die)
+                    held.close()  # 进程被结束
+                    held = None
+                    break
+                assert held.start_turn(message, ask=by(held, policy)).outcome.value == "done"
+    finally:
+        if held is not None:
+            held.close()
+    assert [recap is not None for recap in recaps] == [False, True, False, True, False, True]
+    files = transcript_files(tmp_path)
+    assert len(files) == 3  # 三个新会话各一份记录；恢复没有另起一份
+    resumed = [recap for recap in recaps if recap is not None]
+    assert {(recap.thread_id, recap.turns) for recap in resumed} == {
+        (path.stem, 1) for path in files
+    }
+    reason = f"{NOT_CLOSED}，当时正在等待批准 write_file，这次操作没有执行"
+    assert [recap.reason for recap in resumed] == ["", "", reason]
+    cut = [
+        entry.item
+        for entry in read(tmp_path / ".lime-star" / "threads" / f"{resumed[2].thread_id}.jsonl")
+    ]
+    end = next(number for number, item in enumerate(cut) if isinstance(item, TurnEnd))
+    closing, mended = cut[end], cut[end - 1]
+    assert closing == TurnEnd(Outcome.INTERRUPTED, reason)
+    assert isinstance(mended, ToolResult) and mended.content == WAITING
+    answered = next(
+        item for item in cut[:end] if isinstance(item, ToolCall) and item.call_id == mended.call_id
+    )
+    assert answered.name == "write_file"
+    assert not (tmp_path / "hi.py").exists()
+    assert_same_as_recorded(fixture, replay)
+
+
+def die(_pending: Pending) -> None:
+    raise Died  # 进程在等待批准时被结束：不回应，也不让回合收尾
+
+
+def by(session: Session, policy: Decision) -> Callable[[Pending], None]:
+    return lambda pending: session.respond_action(pending.call_id, policy)

@@ -5,7 +5,7 @@ import os
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -91,8 +91,9 @@ def start_cli(lime_star: Path, tmp_path: Path) -> Iterator[Callable[..., CliProc
     """在临时工作目录里启动真实的会话进程，用例结束时保证它不残留。"""
     started: list[CliProcess] = []
 
-    def start(model_env: dict[str, str] | None = None) -> CliProcess:
-        process = CliProcess(lime_star, tmp_path, child_env(model_env or {}))
+    def start(model_env: dict[str, str] | None = None, args: Sequence[str] = ()) -> CliProcess:
+        """启动真实的会话进程；args 给了就是带参数启动，例如 ("--resume",)。"""
+        process = CliProcess(lime_star, tmp_path, child_env(model_env or {}), args)
         started.append(process)
         return process
 

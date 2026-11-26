@@ -28,9 +28,11 @@ uv run lime-star
 
 写文件和执行命令是危险操作：每次执行之前，终端会显示这次要做什么并请求批准，输入 `y` 才执行，别的输入（包括直接回车）都算拒绝。批准和拒绝都会记进会话记录，被拒绝的操作不会执行，模型也不会把它说成已完成。命令不受工作目录的限制，所以批准之前要看清楚命令。命令运行中按 Ctrl+C，会结束它和它的子进程。输入 `/exit` 退出。
 
+进程退出、回合被 Ctrl+C 打断或者进程被强制结束之后，在同一个目录里运行 `uv run lime-star --resume` 可以接着聊：终端说明恢复了哪个会话、已有几个回合；上一个回合没有完成时再说明原因，比如是取消了，还是进程在等待批准时被结束、那次操作没有执行。恢复不会自己接着跑没完成的回合，也不会再问一遍悬着的批准。一个会话同时只能有一个进程在写：那个会话的进程还开着时，`--resume` 会说明原因并退出。
+
 ## 本地门禁
 
-需要 Node 18 或更高版本。治理脚本零依赖；Python 任务（lock、lint、typecheck、test:unit、smoke:gate-b、test:guards、architecture）需要 uv，首次运行前先执行一次 `uv sync`。
+需要 Node 18 或更高版本。治理脚本零依赖；Python 任务（lock、lint、typecheck、test:unit、smoke:gate-b、smoke:resume、test:guards、architecture）需要 uv，首次运行前先执行一次 `uv sync`。
 
 ```bash
 uv sync                         # 首次运行前：按 uv.lock 建好 .venv
@@ -51,6 +53,15 @@ uv run python scripts/smoke/agent_gate_b.py --live    # 用 .env 或环境变量
 ```
 
 退出码 0 表示全部检查通过。本地门禁的 smoke:gate-b 任务跑的是前一种。
+
+恢复的冒烟让六个真实的 lime-star 进程先后在同一个工作目录里运行，其中一个在批准提示处被强制结束，之后的进程带 `--resume`：
+
+```bash
+uv run python scripts/smoke/resume_gate_b.py           # 默认回放录制的夹具，不联网，不需要密钥
+uv run python scripts/smoke/resume_gate_b.py --live    # 用真实模型，消耗额度
+```
+
+本地门禁的 smoke:resume 任务跑的是前一种。
 
 
 ## 许可

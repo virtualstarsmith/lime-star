@@ -23,16 +23,16 @@
 | 目录或文件 | 归属 owner | 职责 | 禁止放入 | 状态 |
 | --- | --- | --- | --- | --- |
 | `src/lime_star/cli/` | Surface | 终端入口、参数解析、终端投影、向用户发起审批 | 业务编排、provider 请求拼装、绕过 app 直接调用循环或工具 | 已有 |
-| `src/lime_star/app/` | 回合入口（唯一边界） | start_turn、read_thread、respond_action | 第二套执行链 | 已有 |
+| `src/lime_star/app/` | 回合入口（唯一边界） | start_turn、read_thread、respond_action、resume_session | 第二套执行链 | 已有 |
 | `src/lime_star/model_provider/` | 模型边界 | 模型配置、OpenAI 兼容请求、流式解析、请求日志 | 回合循环、工具权限、持久化 | 已有 |
 | `src/lime_star/protocol/` | 协议类型 | Thread、Turn、Item 的类型与事件形状 | 运行时逻辑、I/O | 已有 |
 | `src/lime_star/agent_runtime/` | 回合循环 | 循环状态机与回合编排 | provider wire 细节、工具执行、终端输出 | 已有 |
 | `src/lime_star/tool_runtime/` | 工具边界 | 工具注册、参数校验、路径边界、危险等级、执行 | 终端交互、provider 请求 | 已有 |
-| `src/lime_star/thread_store/` | 持久化 | transcript 追加写入、读取与读模型 | 临时界面状态、第二份会话真相 | 已有 |
+| `src/lime_star/thread_store/` | 持久化 | transcript 追加写入、读取与读模型、会话的查找与独占写入 | 临时界面状态、第二份会话真相 | 已有 |
 | `protocol/` | 契约 schema | Thread、Turn、Item 的 JSON Schema | 实现代码 | 已有 |
 | `tests/` | 测试 | unit、integration、fixtures | 生产代码、真实凭证 | 已有 |
 | `pyproject.toml`、`uv.lock`、`.python-version` | 依赖与工具链 | 依赖声明与锁定、检查工具配置 | 业务逻辑 | 已有 |
-| `.lime-star/` | 运行时产物 | transcript、请求日志、证据导出；不入库 | 需要长期保留的样本（应提升到 tests/fixtures/） | 已有 |
+| `.lime-star/` | 运行时产物 | transcript、请求日志、会话锁、证据导出；不入库 | 需要长期保留的样本（应提升到 tests/fixtures/） | 已有 |
 | `package.json` | 治理命令 | 只承载门禁命令 | 产品依赖 | 已有 |
 | `scripts/` | 工具链 | 治理脚本；冒烟与 harness 脚本随路线图加入 | 业务逻辑 | 已有 |
 | `governance/` | 治理基线 | 基线 JSON 与契约清单 | 临时文件 | 已有 |
@@ -65,6 +65,7 @@ CLI 输入
 4. **transcript 是唯一事实源。** 终端显示、证据导出、回放和评测都只能从它派生。
 5. **证据与回放是下游。** 它们只消费 transcript，不得反向定义运行时真相。
 6. **危险操作先批准后执行。** write_file 与 run_command 只有在 app 回合入口经 `respond_action` 收到批准之后才执行；批准与拒绝都先写进会话记录。CLI 只负责提问和交回决定。
+7. **恢复只凭会话记录。** `--resume` 经 app 回合入口的 `resume_session` 恢复工作目录下最近的会话：历史只从 thread_store 读回；有开始、没有结局的回合由读取的一方判为中断，把缺的结果和中断结局补进同一份记录；恢复后不自动续跑。一个会话记录同一时刻只有一个写入者。
 
 ## 4. 依赖方向与禁止边界
 
@@ -129,7 +130,7 @@ Responsible developer confirmation: <姓名/代号>, <日期>
   4. 一个回合最多 20 次模型请求（需求决策 D-10）。第 20 次响应仍调用工具时，一个工具也不执行，回合以步数上限结束。
   5. 模型请求失败结束回合，不重试；工具出错、未知工具、参数不合法都作为工具结果交回模型，回合继续。
   6. 正式命令的工具集由 tool_runtime 的 default_tools 给出，测试可以经 `open_session` 的 `tools` 参数换上自己的工具集。P2 时它是空的，请求与 P1 相同；P3 起含 read_file，见 7.2。
-- 相关协议：项（UserMessage、ModelText、Reasoning、ToolCall、ToolResult）、Outcome（done、error、cancelled、step_limit）、ModelResult（ModelReply 或 ModelFailure）。项的 JSON Schema 契约随 P3 登记。
+- 相关协议：项（UserMessage、ModelText、Reasoning、ToolCall、ToolResult）、Outcome（done、error、cancelled、step_limit，以及 7.4 加入的 interrupted）、ModelResult（ModelReply 或 ModelFailure）。项的 JSON Schema 契约随 P3 登记。
 - 退出条件：回合循环被另一个 owner 取代时，删除 `src/lime_star/agent_runtime/`，在第 4 节登记 `run_turn` 为 dead / deleted / forbidden-to-restore，并把依赖矩阵里的这一行删掉。
 
 ```text
@@ -151,7 +152,7 @@ Responsible developer confirmation: 仓库所有者，2026-11-24
   3. 每项写入后 flush 并 fsync，然后才继续处理。读回时，末尾没有换行的残行不算一项；看不懂的行直接报错，不悄悄丢掉。
   4. 循环经 protocol 里的 Journal 接口写记录。循环不导入 thread_store；app 负责把接口接上，并在每一项落盘后把它交给显示回调。
   5. 终端显示是记录的投影：`src/lime_star/cli/chat.py` 的 project 只看传进来的项，不留状态。回合怎样收场（完成、取消、步数上限、出错）也由回合结局项驱动显示。
-  6. 记录里每次工具调用都有且只有一条结果。没有执行的调用由循环补一条出错的结果：取消时被中断的调用和它后面的调用，达到步数上限时最后一次响应里的调用。
+  6. 记录里每次工具调用都有且只有一条结果。没有执行的调用由循环补一条出错的结果：取消时被中断的调用和它后面的调用，达到步数上限时最后一次响应里的调用。进程被强制结束而留下的，由恢复会话的一方补（7.4）。
   7. 模型可见的历史由会话记录的项转换而来，转换只在 model_provider 的 _messages 一处。回合结局项目前不上线路。
   8. 请求日志凭 thread_id 和 turn_id 与会话记录关联（R3.4）。两个标识由 app 在打开会话时生成，两边共用。
 - 相关协议：契约 thread-items，schema 是 `protocol/thread-items.schema.json`，消费者是 protocol 的项类型、thread_store 的编码和契约用例。录制的模型响应放在 tests/fixtures/provider/ 下，只供测试回放；产品代码没有回放开关（R11.6）。
@@ -187,4 +188,29 @@ Architecture impact: major
 架构图已更新：architecture.md 第 3 节加一条固定判断、本节 7.3；7.1 的指引改指 7.3
 Responsible developer confirmation: 仓库所有者，2026-11-26
 确认内容：本阶段不新增目录，也不改依赖矩阵：tool_runtime、app、cli 三个 owner 都已存在。改变的是业务主链：危险操作在执行之前多了一个节点，批准；回应它经 app 回合入口的 respond_action，循环对此一无所知。正式命令第一次向模型提供 write_file 和 run_command，第一次能在用户的工作目录里改动文件、执行命令。替代方案：让循环自己处理审批，循环就得知道危险等级和用户界面，被"循环是纯核心"禁止；让每个工具在执行函数里自己请求批准，那要靠自觉，所以改成注册表里的结构性保证，拿不到批准就不调用执行函数；结束命令的进程树用 taskkill，中间进程先退出时它的子进程会漏掉，所以 Windows 上用作业对象。回滚策略：默认工具集回到 read_file 和 list_dir，删除 write_file、run_command 和 Session.respond_action；已经写出的会话记录不需要迁移，批准项的形状从 P3 起就在契约里。
+```
+
+### 7.4 持久化与恢复
+
+落地于路线图 P5（2026-11-26）。阶段计划见 `../exec-plans/p5-resume-plan.md`。
+
+- 主链：CLI 的 `--resume` -> app 回合入口 `resume_session` -> thread_store 找出工作目录下最近的会话、读回它的记录、判出有开始没有结局的回合并补记、取独占写入 -> 同一个会话标识上的 `start_turn` -> 之后的每一步与不带参数的会话相同。
+- owner：`src/lime_star/thread_store/` 是会话的查找（threads.py）、回合的读模型（turns.py）和独占写入（hold.py）的 owner，与 transcript 的写入和读回在同一个包里。app 回合入口是恢复流程的 owner：CLI 只传 `--resume`，只显示 app 给的概况。
+- 边界：
+  1. 恢复只凭会话记录。`resume_session` 不接收任何内存里的状态：它用 `latest` 找出工作目录下最近一个有活动的会话，活动以记录里最后一项的时间为准；读回它的全部项，在同一个 thread_id 上接着写。请求日志带新的 session_id 和原来的 thread_id（R9.5、R3.4）。
+  2. 有开始、没有结局的回合是中断（R9.3）。读取的一方用读模型 `interrupted` 判定它，并给出要补的项：没有结果的调用各一条结果，最后是一条 interrupted 结局。app 在恢复时把这些项追加进同一份记录，所以每个回合都有结局，每次调用都有且只有一条结果，交给模型的东西都在记录里。
+  3. 补上的结果说看记录就能确定的事实。先经批准才执行的工具，调用没有批准项，说明注册表没有放行，这次操作没有执行；有批准项、没有结果，操作可能已经发生，如实说结果未知。判定需要的"哪些工具要先经批准"取自工具注册表的 `Registry.dangerous`，thread_store 不认识具体的工具。
+  4. 恢复不续跑。它不调用循环，不发模型请求，不请求批准，不执行任何操作（R9.4）。终端在横幅之后显示一行概况，上一个回合没有正常完成时再显示一行原因；不重放历史（R9.5-S2）。
+  5. 恢复之前核对记录。最后一项读不懂、序号不连续、有一项不属于这个会话、中间出现没有结局的回合，都拒绝恢复，不往上写。中间出现没有结局的回合，说明那份记录被改过，或者被两个进程同时写过。
+  6. 一个会话记录同一时刻只有一个写入者。打开会话（新建或恢复）时在 .lime-star/locks 下取锁文件，用操作系统的文件锁占住，进程结束时自动释放，取不到就不恢复。锁加在旁边的锁文件上，不加在会话记录文件上，记录在会话进行中照样能被读。
+  7. 模型可见的历史不变：回合结局项仍然不上线路，转换仍只在 model_provider 的 `_messages` 一处。补记的工具结果在记录里，所以模型看得到。
+- 相关协议：结局多一种 `interrupted`（protocol 的 Outcome，契约 thread-items）。`turn_count`、`last_reason`、`interrupted`、`Hold`、`Busy`、`latest` 在 thread_store；`resume_session`、`Recap`、`NoSession` 在 app。
+- 守卫：入口集成 `tests/integration/test_resume.py`（持久化硬规则：写入后以新实例读取、中断的回合被补上结局、恢复不续跑、一个写入者）；真实进程 `tests/integration/test_cli_resume.py`；真实控制台 `tests/integration/test_cli_console.py`；Gate B 冒烟 `scripts/smoke/resume_gate_b.py`。
+- 退出条件：恢复能力被另一个 owner 取代时，删除 `resume_session` 和 thread_store 的 hold.py、threads.py、turns.py，在第 4 节登记它们为 dead / deleted / forbidden-to-restore，把结局收回四种，移除本章和根 AGENTS.md 的持久化硬规则。
+
+```text
+Architecture impact: major
+架构图已更新：architecture.md 第 2 节目录地图（app、thread_store、.lime-star 三行）、第 3 节加一条固定判断、本节 7.4
+Responsible developer confirmation: 仓库所有者，2026-11-26
+确认内容：本阶段不新增目录，也不改依赖矩阵。改变的是业务主链：多了一个入口 resume_session，恢复的进程从 thread_store 读回工作目录下最近的会话，在同一个会话标识上接着写；有开始、没有结局的回合由读取的一方判为中断，把缺的结果和中断结局补进同一份记录，恢复后不自动续跑。协议多一种结局 interrupted。另加一条需求没有写的约束：一个会话记录同一时刻只有一个写入者，靠操作系统在锁文件上的文件锁保证，进程结束时自动释放；没有它，恢复的进程会替一个还活着的回合收尾。替代方案：判定只在读的时候做、不写回记录，模型可见的历史就得在转换时另补一条不在记录里的工具结果，违背"记录的就是交给模型的"；不改结局的枚举、把中断记成取消，以后按结局统计时只能去读原因那一句话。回滚策略：删除 resume_session、thread_store 的 hold、threads、turns 三个模块和 CLI 的 --resume，结局回到四种；已经写出的会话记录不需要迁移，补记的项用的是已有的项类型，只有中断结局的 outcome 值是旧的版本读不懂的。
 ```

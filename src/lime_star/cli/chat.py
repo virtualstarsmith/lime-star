@@ -3,6 +3,7 @@
 终端上关于一个回合的每一行都来自会话记录：一项落盘后，project 把它显示出来。这里不留状态，
 也不自己拼第二份会话真相。批准提示本身不是记录，它是向用户提的问题：说明由工具边界给出，
 这里把它显示出来、读一行输入，再把决定交回 app 回合入口（R7.6 到 R7.9）。
+恢复会话时显示的一行说明和未完成的原因（需求 R9）也在这里拼，材料是 app 给的概况；历史不重放。
 """
 
 import queue
@@ -12,7 +13,7 @@ from pathlib import Path
 from typing import Protocol, TextIO, assert_never
 
 from lime_star import __version__
-from lime_star.app import Session
+from lime_star.app import Recap, Session
 from lime_star.protocol import (
     Approval,
     Entry,
@@ -135,9 +136,24 @@ class StdinLines:
             self._queue.put(line)
 
 
-def chat(session: Session, lines: LineSource, out: TextIO, err: TextIO, workdir: Path) -> int:
-    """跑一次会话，返回进程退出码。"""
+def chat(
+    session: Session,
+    lines: LineSource,
+    out: TextIO,
+    err: TextIO,
+    workdir: Path,
+    recap: Recap | None = None,
+) -> int:
+    """跑一次会话，返回进程退出码。
+
+    recap 是恢复会话时 app 给的概况（需求 R9）：横幅之后显示一行说明，上一个回合没有完成时
+    再显示一行原因；历史不重放。新会话没有它。
+    """
     _say(out, f"lime-star {__version__}  {workdir}\n")
+    if recap is not None:
+        _say(out, f"已恢复会话 {recap.thread_id}，已有 {recap.turns} 个回合。\n")
+        if recap.reason:
+            _say(out, f"上一个回合没有完成：{recap.reason}。\n")
     while True:
         _say(out, PROMPT)
         try:
@@ -214,6 +230,8 @@ def _ending(end: TurnEnd, out: TextIO, err: TextIO) -> None:
         case Outcome.ERROR:
             # 只写类别和状态码。
             _say(err, f"回合出错：{end.reason}。\n")
+        case Outcome.INTERRUPTED:
+            _say(out, f"回合中断：{end.reason}。\n")
         case _:
             assert_never(end.outcome)
 
