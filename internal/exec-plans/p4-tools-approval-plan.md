@@ -178,10 +178,11 @@ R14.3、R14.4 是"应当"，由路线图 P6 的评测验证（决策 D-12），�
 | E | `node scripts/check-doc-links.mjs`、`check-file-size-governance.mjs`、`check-scripts-baseline.mjs` | 守卫 | 通过。行数门禁凭第一项里的 @generated 把 mvp.json 认作生成文件；scripts 基线多了一级目录 smoke |
 | 全程 | 密钥守卫的 8 条规则，对本轮 44 个改动和新增的文件另扫一遍；两份夹具另查接口地址和主目录路径 | 守卫 | 0 处命中，夹具里没有。正式的密钥守卫只扫已跟踪的文件，新文件要等提交后才在它的范围内 |
 | G | `npm run verify:local -- --full` | 门禁 | 签署之后重跑（2026-11-26 10:44，不设 UV_NO_SYNC）：12 个任务全部通过，约 200 秒。test:unit 346 条通过、3 条跳过；smoke:gate-b 23 项；test:guards 41 条；architecture 21 条。签署之前那一轮停在 test:unit 的确认块守卫上（345 通过、1 失败），fail-fast 之后的三个任务单独跑，其中两个各只有那一条失败 |
+| 全程 | CI：推送之后 GitHub Actions 的运行 45745216946，针对提交 90e48a1 | 门禁，Linux runner | 通过：verify 作业的每一步都成功，Local gate (full) 在 Linux 上通过，约 84 秒。依据是运行、作业和步骤的状态，日志没有读，所以 Linux 上逐条用例的结果没有记录 |
 
 未跑与原因：
 
-- CI：要等提交和推送，本轮没有提交。Linux 上的 run_command（/bin/sh、进程组）在本机跑不了，只有 CI 能验证；CI 的全量门禁会跑上面那些在两种平台上都能跑的用例。
+- CI 已经通过，见表里最后一行。Linux 上的 run_command（/bin/sh、进程组）在本机跑不了，CI 的全量门禁在 Linux runner 上跑过，结论是通过；日志没有读，所以那边逐条用例的结果没有记录。
 - 真实控制台上批准提示处按 Ctrl+C：交互循环这一层（test_cli_chat.py）和入口集成都有用例，真实控制台里只验证了命令运行中的 Ctrl+C 和输入 y。
 - 不设 `UV_NO_SYNC` 的门禁：已经跑过。那个会话结束之后 uv 补上了入口命令的重装，签署之后的全量门禁不设它，12 个任务全部通过。
 
@@ -354,10 +355,18 @@ MVP 范围内的需求：
 - 完成度：95%。还差 CI。路线图 P4 退出条件的第 1 条要仓库所有者亲手做，回复里没有说他做了没有。
 - 下一刀：仓库所有者说"提交"再提交，push 要他单独要求。推送之后核对 CI，通过就在路线图追加 P4 的阶段结论，关闭本计划。那两件待定的事和 CCD-005 最好在 P5 开工之前处理。
 
+### 2026-11-26（提交与 CI）
+
+- 改动：仓库所有者说“提交 推送”。提交 90e48a1，45 个文件，已推送到 origin/main；路线图追加 P4 的交付记录，验证矩阵的 P4 行补上结果，当前结论更新为 71%。本计划保持进行中。
+- 验证：推送之后 CI 运行 45745216946，针对提交 90e48a1，结论 success；verify 作业的每一步都成功，Local gate (full) 在 Linux runner 上通过，约 84 秒。这是 run_command 在 /bin/sh 上的用例和回放模式的冒烟第一次在 Windows 以外运行。依据是运行、作业和步骤的状态，日志没有读。
+- 未跑：真实控制台上批准提示处的 Ctrl+C，仍然只有进程内的用例。
+- 完成度：95%。代码、验证、架构确认和 CI 都有了；剩下的是仓库所有者对“待仓库所有者决定”两条的答复，以及他亲手完成主场景这一条退出条件。
+- 下一刀：两件事定了之后，在路线图把 P4 记为完成并关闭本计划，然后按 P5 的开工话术开始 P5。CCD-005 最好在 P5 开工之前清掉。
+
 ## 当前结论
 
 - 治理四分类：current 新增 tool_runtime 的 list_dir、write_file、run_command，进程树 Tree，Tool 的 danger，Registry.approved_by 和它返回的 Granted；protocol 的 Pending、Approver、Decision、Halted；app 的提问回调和 Session.respond_action；cli 的批准提示和批准项的投影；scripts/smoke/agent_gate_b.py 和 verify-local 的 smoke:gate-b 任务；测试里的回放服务、按场景的录制和 mvp 夹具。current 扩展：循环对被中断的工具的处理，默认工具集，系统指令，thread-items 契约的说明，CliProcess 的收尾。compat、deprecated、dead 均无新增或删除。直接替换掉的内部做法不属于四类：夹具的单回合形状，录制脚本里写死的一段对话，CliProcess.close 只结束启动器的做法。
-- 验证结果与未验证原因：见验证矩阵。路线图 P4 的四条退出条件逐条有结果。第 1 条（仓库所有者亲手完成主场景并至少拒绝一次）：Agent 用真实进程替它跑了两次，一次模型为回放夹具，一次是真实模型；仓库所有者自己有没有亲手跑，回复里没有说。第 2 条（交付需求逐条有验证记录）见"逐条验证"，R14.3、R14.4 按决策 D-12 留给 P6。第 3 条（冒烟脚本）通过。第 4 条（可追踪验收）的结论是 Partial，见"可追踪验收"。未验证：CI，Linux 上的 run_command，真实控制台上批准提示处的 Ctrl+C。架构确认块已由仓库所有者于 2026-11-26 签署，本地门禁 12 个任务全部通过；CI 还没有跑。
+- 验证结果与未验证原因：见验证矩阵。路线图 P4 的四条退出条件逐条有结果。第 1 条（仓库所有者亲手完成主场景并至少拒绝一次）：Agent 用真实进程替它跑了两次，一次模型为回放夹具，一次是真实模型；仓库所有者自己有没有亲手跑，回复里没有说。第 2 条（交付需求逐条有验证记录）见"逐条验证"，R14.3、R14.4 按决策 D-12 留给 P6。第 3 条（冒烟脚本）通过。第 4 条（可追踪验收）的结论是 Partial，见"可追踪验收"。未验证：真实控制台上批准提示处的 Ctrl+C。架构确认块已由仓库所有者于 2026-11-26 签署，本地门禁 12 个任务全部通过，CI 通过（运行 45745216946）；Linux 上的 run_command 只在 CI 的全量门禁里跑过，日志没有读。
 - 未做与原因：pyproject.toml 没有把 scripts 加进 mypy 的检查范围，冒烟脚本只在本轮手工检查过一次，登记为 CCD-005。
 - 来源声明：对照阅读了 lime 仓库 internal/aiprompts/query-loop.md 的"代码入口地图"和"current / compat / deprecated"，以及 lime-rs/crates/tool-runtime 的目录结构，和其中 execution_approval.rs、execution_decision.rs、unified_exec/cancellation.rs、path_guard.rs 的文件头。只取三个思路：批准是主链上一个可以恢复的节点，回应它只复用当前回合的上下文；要不要批准由工具边界在执行前按工具判定，判定和执行在同一个 owner；取消时先结束进程树，再把已有的输出作为结果写下来。按本仓库语境重写，没有复制原文。Windows PowerShell 的退出码、标准错误、引号传递和作业对象的行为是本机用临时脚本实测的，脚本在仓库外，没有入库；它们还在系统临时目录的 lime-star-p4-exp 下（约 16 KB），删除它的命令被本机的策略拦下，可以手动删。真实模型只用于录制夹具和一次 Live 冒烟。
 
