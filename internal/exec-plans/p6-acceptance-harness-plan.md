@@ -304,14 +304,21 @@ Evidence Layers:
 - 完成度：这一刀 100%。P6 100%。
 - 下一刀：等仓库所有者验收并说"提交"；提交之后看 CI。
 
+### 2026-11-27（提交与 CI）
+
+- 改动：仓库所有者说"提交 推送"。提交 dd27dfe，16 个文件，已推送到 origin/main。
+- 验证：推送之后 CI 运行 45927743294，针对提交 dd27dfe，结论 success。verify 作业的每一步都成功，Local gate (full) 在 Linux runner（ubuntu-latest）上通过，约 2 分钟。这是改写后的系统指令、新的 ask 夹具和重新生成的样本第一次在 Windows 以外运行。依据是运行、作业和步骤的状态，日志没有读。macOS 仍然没有验证。
+- 完成度：P6 100%。路线图 100%，P0 到 P6 完成；P7 是可选扩展，未开始。
+- 下一刀：三份旧夹具（mvp、read_file、resume）要不要重录，P7 做不做，都等仓库所有者决定。记录的这一次提交只改文档，不再为本计划追记它的 CI。
+
 ## 当前结论
 
 - 治理四分类（2026-11-27 的追记）：current 扩展一处，model_provider 系统指令的第 4 条；current 的一份数据资产换成新版本，夹具 ask.json、固定样本 ask-which 与它的证据包。两条用例的断言和 harness-evals 的说明随新的录制片更新。compat、deprecated、dead 均无新增或删除。2026-11-26 的旧录制片和旧样本被新版本替换，历史在 Git 里。
 - 治理四分类（2026-11-26 建立反馈层时）：current 新增 scripts/harness 的三个脚本、机读任务集 `internal/test/harness-evals.json`、入口集成 `test_harness.py`、两个固定样本与它们链接的证据包、录制的 ask 夹具。current 扩展：verify-local 的任务表、scripts 基线、录制脚本的场景、根 AGENTS.md 的硬规则、架构图目录地图的一行。compat、deprecated、dead 均无新增或删除。被本阶段自己的后一版换掉的中间产物不属于四类（手写的样本、复制事件的样本形状、拒绝导出的中断判定、gate 这个字段名），它们没有进过仓库。
 
-- 验证结果与未验证原因：2026-11-27 的验证见上面"验证合同（2026-11-27，R14.4 追记）"的必跑命令和进度记录。本地门禁 15 个任务在 Windows 上全部通过。Linux 等提交之后的 CI（上一次是运行 45836915436，针对提交 3fe4533，verify 作业成功）。macOS 没有验证：CI 只跑 ubuntu-latest。`--live` 的恢复冒烟没有跑：本刀没有改恢复，恢复的冒烟在回放下通过。
+- 验证结果与未验证原因：2026-11-27 的验证见上面"验证合同（2026-11-27，R14.4 追记）"的必跑命令和进度记录。本地门禁 15 个任务在 Windows 上全部通过。Linux 由 CI 覆盖：运行 45927743294，针对提交 dd27dfe，verify 作业在 ubuntu-latest 上成功。macOS 没有验证：CI 只跑 ubuntu-latest。`--live` 的恢复冒烟没有跑：本刀没有改恢复，恢复的冒烟在回放下通过。
 - 遗留：R14.4 现在在固定样本里是通过的，证据是 2026-11-27 的两次真实模型运行。mvp、read_file、resume 三份夹具没有重录，记下的指令哈希是旧指令的，R14.3 的样本 rejected-write 也来自旧指令下的录制。要不要重录这三份，由仓库所有者决定。
 - 来源声明：2026-11-27 的追记没有参考 lime 的内容，依据是本仓库需求 R14.4-S1 和 2026-11-26 的录制事实。2026-11-26 的来源声明如下。对照阅读了 lime 仓库的 internal/develop/traceable-agent-acceptance-methodology.md、internal/test/harness-evals.md、internal/aiprompts/harness-engine-governance.md，只读。取四个思路，按本仓库语境重写，没有复制原文，也没有参考它的代码：固定的任务集入口与四件套样本形状；提升脚本只产出四件套并把绝对路径换成占位路径；数据只准单向流动，每一层只读上一层；没有发生的信号不导出，不用空数组占位。"必须和应当分开、后者不挡门禁"来自本仓库需求文档的决策 D-12，不是 lime 的做法。
-- 下一刀：见路线图 2026-11-27 R14.4 缺口处置那一条。
+- 下一刀：见路线图 2026-11-27（提交与 CI）那一条。
 
 完成度: 100%
