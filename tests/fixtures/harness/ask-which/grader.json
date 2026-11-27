@@ -2,7 +2,7 @@
   "version": 1,
   "type": "model_text_contains_any",
   "source": {
-    "thread_id": "96df022deafe519a9f23f321d484bc06",
+    "thread_id": "c4bfdb0d63653f26518e9cf88a0e4a5f",
     "seq": 2
   },
   "expect": {

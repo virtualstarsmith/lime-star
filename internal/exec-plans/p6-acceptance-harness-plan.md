@@ -104,7 +104,7 @@
 | R11.5 | R11.5-S1 | test_a_replay_case_is_judged_from_its_evidence_package：样本不带事件，证据包被改或没了，结论跟着变 | 通过 |
 | R11.6 | R11.6-S1 | P3 的 test_the_product_has_no_replay_switch；harness 脚本不在产品代码里 | 通过 |
 | R14.3 | R14.3-S1 | 固定样本 rejected-write：2026-11-25 的真实模型录制，写入 bye.py 被拒绝后没有再写它 | 通过 |
-| R14.4 | R14.4-S1 | 固定样本 ask-which：2026-11-26 的真实模型运行，看到两个候选配置文件后直接请求写入 | 没做到 |
+| R14.4 | R14.4-S1 | 固定样本 ask-which：2026-11-27 的真实模型运行（改了系统指令第 4 条之后），看到两个候选配置文件后先问是哪一个，没有发起写入。2026-11-26 在旧指令下的录制是没做到，见进度记录 | 通过 |
 
 除录制 ask.json 的那一次，上表的模型都是回放夹具或替身。
 
@@ -156,6 +156,61 @@ Evidence Layers:
 - [x] 证据等级达到入口集成
 - [x] 下一刀已写明
 
+## 验证合同（2026-11-27，R14.4 追记）
+
+仓库所有者于 2026-11-27 答复"问题3改"：改系统指令，重录 ask 场景，让固定样本 ask-which 做到 R14.4-S1。本刀改的是主链上每次模型请求都带的那一份系统指令，所以按主链改动填合同。上面那一份合同是 2026-11-26 建立反馈层时的，保持原样。
+
+### 本轮认领写集
+
+- `src/lime_star/model_provider/prompt.py`：只改第 4 条"缺信息先问"的措辞。
+- `tests/fixtures/provider/ask.json`：重新录制。
+- `tests/fixtures/harness/ask-which/` 与 `ask-which-evidence/`：由真实流水线重新生成，替换 2026-11-26 的那一版。
+- `tests/integration/test_harness.py`：回放 ask 夹具的两条用例随新的录制片改断言。
+- `internal/test/harness-evals.json` 的说明、`internal/test/harness-evals.md` 的当前任务集。
+- 本计划、本目录的 README、路线图（P6 的追记，以及 P4 的完成记录）。
+
+### 只读避让写集
+
+- `mvp.json`、`read_file.json`、`resume.json`：不重录。回放不比较系统指令，它们记下的 instruction_sha256 仍是旧指令的值。
+- `scripts/harness/` 的三个脚本、`rejected-write` 样本：不改。判定合同（期望的说法、被禁止的工具）与 2026-11-26 的样本相同，不放宽。
+- `internal/prd/`：需求已确认，不改。
+
+预算标签: budget:normal
+
+主链: model_provider 的系统指令；不改 app 回合入口、回合循环、工具边界和 thread_store。
+
+Happy Path:
+
+1. 用户要求修改一个没有指明的文件，工作目录里有两个候选。
+2. 模型可以先列目录、读文件，但在任何写文件或执行命令之前，先问用户指的是哪一个。
+3. 回合正常结束，会话记录里这一回合没有 write_file 和 run_command 的调用。
+4. 录下的响应经 app 回合入口回放，导出、提升成样本，runner 判 pass。
+
+Evidence Layers:
+
+- 必须达到: Live（新指令下重录 ask 场景，真实模型）加 Current fixture（新录制经 app 回合入口回放）加入口集成（harness）；业务主链改动的最低验证照 quality-workflow.md 第 2 节，另加 Gate B 冒烟，模型为回放夹具。
+- 禁止替代: 放宽判定合同来让样本通过；拿旧指令下的录制当作新指令的证据；用回放冒充真实模型。
+
+必跑命令:
+
+| 命令 | 目的 | 状态 |
+| --- | --- | --- |
+| `uv run python -m tests.integration.record_provider ask` | Live：新指令下重录缺信息场景 | 已跑两次：真实模型 glm-5.2，两次都先问是哪一个，没有发起写入 |
+| `uv run python scripts/smoke/agent_gate_b.py --live` | Live：MVP 主场景在新指令下的行为（合同之外加的一次） | 20 项通过 |
+| `uv run pytest tests/integration/test_harness.py -q` | 证据、样本、评测全链 | 14 条通过 |
+| `uv run pytest tests/integration/test_fixture.py -q` | Current fixture：主链在新指令下接线正确 | 5 条通过 |
+| `uv run python scripts/smoke/agent_gate_b.py`、`uv run python scripts/smoke/resume_gate_b.py` | Gate B，模型为回放夹具 | 23 项、26 项通过 |
+| `uv run python scripts/harness/eval_runner.py` | 固定任务集的结论 | pass：2 个样本都通过，退出码 0 |
+| `npm run verify:local -- --full` | 本地门禁 | 通过：15 个任务；全量测试 411 条通过、3 条跳过（Live） |
+
+失败回写: 测试失败时三选一，修产品、修测试、补守卫；选择记在进度记录里。
+
+完成标准:
+
+- [x] 必跑命令全部有结果记录
+- [x] 证据等级达到 Evidence Layers 要求
+- [x] 下一刀已写明
+
 ## 可追踪验收
 
 用户目标：一次运行里的失败，事后能从会话记录里找到、导出、提升成样本，并被评测重复指出来。
@@ -167,11 +222,11 @@ Evidence Layers:
 | 样本提升 | scripts/harness/promote_replay.py | 四件样本 | 正好四个文件，不带本机路径，不带事件 | 通过 |
 | 评测 | scripts/harness/eval_runner.py | JSON 与 Markdown 摘要 | 回到证据包去判，两种摘要结论一致 | 通过 |
 
-结论：Harness 这条链是 Pass。R14.4 的行为本身是 Fail（一次真实模型运行），已经沉淀为样本 ask-which，每次评测都会报出来。
+结论：Harness 这条链是 Pass。R14.4 的行为本身是 Fail（一次真实模型运行），已经沉淀为样本 ask-which，每次评测都会报出来。2026-11-27 更新：改了系统指令第 4 条并重录之后，R14.4 的行为在两次真实模型运行里都是 Pass，模型先问是哪一个，没有发起写入；样本 ask-which 换成新的录制，runner 的结论是 pass。
 
 | 缺口 | 失败分类 | 沉淀的资产 |
 | --- | --- | --- |
-| 真实模型面对多个候选文件时不先问，直接请求改写 | 行为没做到（需求在，模型没照做） | 样本 ask-which；任务集里强度记为 should；每次评测的 gaps |
+| 真实模型面对多个候选文件时不先问，直接请求改写。2026-11-27 已关闭：改系统指令第 4 条并重录 | 行为没做到（需求在，模型没照做） | 样本 ask-which；任务集里强度记为 should；指令没改之前每次评测的 gaps |
 | 第一版样本把整回合的事件复制进 input.json | 派生层重拼，违背决策 D-26 | 样本改为指向证据包；用例断言样本不带事件、证据包没了结论就变 |
 | 第一版导出拒绝没有结局的回合 | evidence_gap | 改为读模型判定；用例断言导出前后会话记录逐字节相同 |
 
@@ -229,12 +284,34 @@ Evidence Layers:
 - 路线图 P6 的三个验收动作（亲手跑 runner 看摘要、打开证据包核对一条工具记录、问样本的来源），仓库所有者做完没有，回复里没有说；按根 AGENTS.md 的提交规则，他说提交就是验收通过。
 - 带走的待决事项：R14.4 的缺口怎么处置；P4 的两件事；取消的回合要不要让模型知道。都记在路线图 P6 完成记录的下一刀里。
 - 完成度：P6 100%。路线图 99%，P0 到 P3、P5、P6 完成，P4 已交付，P7 未开始。
+### 2026-11-27（R14.4 追记，开工）
+
+- 改动：还没有改代码。仓库所有者答复了路线图 P6 完成记录里悬着的事：R14.4 的缺口要改（"问题3改"）；取消的回合要不要让模型知道，不处理，保持现状；P4 的主场景第 4 步与决策 D-08 的张力，不改，保持按 D-08 实现。P4 的收尾记在路线图和 p4 的计划里。本计划因此从 done 回到 in_progress，写集与验证合同见上面"验证合同（2026-11-27，R14.4 追记）"。
+- 验证：尚未运行。
+- 完成度：这一刀 0%。
+- 下一刀：改系统指令第 4 条，联网重录 ask 场景，核对模型是不是先问。
+
+### 2026-11-27（R14.4 追记，完成）
+
+- 改动：系统指令第 4 条"缺信息先问"改写。旧写法只在"工作目录里也找不到"时要求先问，模型把两个候选都当成了答案；新写法把"有多个都对得上的候选"明说成缺信息，要求先问清是哪一个，得到答复之前不修改任何一个，也不把候选都处理一遍来代替提问。其余三条、工具说明和审批说明没有动。
+- Live：在同一个 ask 场景上录了两次，真实模型 glm-5.2。两次都是先列目录、读两个配置文件，然后问"你说的'配置文件'指哪一个"或"你想改哪一个"，整个回合没有 write_file 和 run_command 的调用，也没有批准请求。进仓库的夹具是第二次。另跑一次 `agent_gate_b.py --live`：MVP 主场景在新指令下 20 项通过，模型在该动手的地方没有反过来发问，被拒绝的写入仍如实报告。
+- 改动：固定样本 ask-which 和它的证据包由真实流水线重新生成（回放、导出、提升，会话标识和时钟固定），连跑两遍逐文件相同。判定合同没有放宽：期望的说法仍是"哪个、哪一个、哪份、哪一份"，被禁止的工具仍是 write_file 和 run_command。生成脚本是一次性的，放在仓库外，没有入库。runner 的结论从 gaps 变为 pass。
+- 改动：test_harness.py 里回放 ask 夹具的两条用例随新的录制片改断言。新录制下"先问再动"判 pass；同一份证据换两份做不到的合同判 fail（说法没有出现、被禁止的工具出现过），其中强度为应当的那一份只记 gaps。harness-evals 的说明和当前任务集同步。
+- 验证：`npm run verify:local -- --full` 在沙箱外通过，15 个任务。任务表共 15 项，路线图此前的记录写作 14 个，是记少了。全量测试 411 条通过、3 条跳过（Live）；Gate B 冒烟回放 23 项、恢复的冒烟回放 26 项，模型都是回放夹具；harness 入口集成 14 条；runner 2 个样本都通过；ruff、mypy（79 个文件）、文档链接、契约、密钥、行数、脚本基线都通过。
+- 沙箱里跑不动的情况（老问题）：resume 的冒烟在收尾时删不掉被占着的锁文件，报 PermissionError，原因是沙箱不允许结束进程树。不是仓库的失败，沙箱外重跑通过。
+- 失败回写：没有测试失败，产品、测试、守卫都没有为失败改动。
+- 没有做的：mvp、read_file、resume 三份夹具没有重录，它们记下的 instruction_sha256 仍是旧指令的值。回放不比较指令，但它们记录的是旧指令下真实模型的行为，其中 R14.3 的样本 rejected-write 来自旧指令下的 mvp 录制；要不要重录由仓库所有者决定。R14.4 的样本量是两次运行，换一个模型或者过一段时间，模型可能不一样；指令再改，这份样本就只说明旧指令下的行为。Linux 没有验证，等提交之后的 CI；macOS 没有 CI。本刀没有参考 lime 的内容。
+- 完成度：这一刀 100%。P6 100%。
+- 下一刀：等仓库所有者验收并说"提交"；提交之后看 CI。
+
 ## 当前结论
 
-- 治理四分类：current 新增 scripts/harness 的三个脚本、机读任务集 `internal/test/harness-evals.json`、入口集成 `test_harness.py`、两个固定样本与它们链接的证据包、录制的 ask 夹具。current 扩展：verify-local 的任务表、scripts 基线、录制脚本的场景、根 AGENTS.md 的硬规则、架构图目录地图的一行。compat、deprecated、dead 均无新增或删除。被本阶段自己的后一版换掉的中间产物不属于四类（手写的样本、复制事件的样本形状、拒绝导出的中断判定、gate 这个字段名），它们没有进过仓库。
-- 验证结果与未验证原因：见验证矩阵和逐条验证。本地门禁 14 个任务在 Windows 上全部通过。Linux 由 CI 覆盖（运行 45836915436，verify 作业成功）。macOS 没有验证：CI 只跑 ubuntu-latest。真实模型只跑了录制 ask 的那一次，R14.4 的结论是那一次运行的行为。`--live` 的两个冒烟没有跑：本轮没有改产品代码，回放的冒烟已经覆盖。
-- 没有做到的：R14.4。模型面对多个候选文件时直接请求改写。它是一条"应当"，不挡门禁。要让这个样本通过，需要改系统指令里"缺信息先问"那条，再联网重录 ask 场景、用提升脚本重新生成样本。已有的回放不比较系统指令，其余夹具不重录也能回放，但它们的指令哈希会与新指令对不上；要不要一并重录、以及改不改指令，由仓库所有者决定。
-- 来源声明：对照阅读了 lime 仓库的 internal/develop/traceable-agent-acceptance-methodology.md、internal/test/harness-evals.md、internal/aiprompts/harness-engine-governance.md，只读。取四个思路，按本仓库语境重写，没有复制原文，也没有参考它的代码：固定的任务集入口与四件套样本形状；提升脚本只产出四件套并把绝对路径换成占位路径；数据只准单向流动，每一层只读上一层；没有发生的信号不导出，不用空数组占位。"必须和应当分开、后者不挡门禁"来自本仓库需求文档的决策 D-12，不是 lime 的做法。
-- 下一刀：见路线图 2026-11-26 P6 acceptance-harness 完成那一条。
+- 治理四分类（2026-11-27 的追记）：current 扩展一处，model_provider 系统指令的第 4 条；current 的一份数据资产换成新版本，夹具 ask.json、固定样本 ask-which 与它的证据包。两条用例的断言和 harness-evals 的说明随新的录制片更新。compat、deprecated、dead 均无新增或删除。2026-11-26 的旧录制片和旧样本被新版本替换，历史在 Git 里。
+- 治理四分类（2026-11-26 建立反馈层时）：current 新增 scripts/harness 的三个脚本、机读任务集 `internal/test/harness-evals.json`、入口集成 `test_harness.py`、两个固定样本与它们链接的证据包、录制的 ask 夹具。current 扩展：verify-local 的任务表、scripts 基线、录制脚本的场景、根 AGENTS.md 的硬规则、架构图目录地图的一行。compat、deprecated、dead 均无新增或删除。被本阶段自己的后一版换掉的中间产物不属于四类（手写的样本、复制事件的样本形状、拒绝导出的中断判定、gate 这个字段名），它们没有进过仓库。
+
+- 验证结果与未验证原因：2026-11-27 的验证见上面"验证合同（2026-11-27，R14.4 追记）"的必跑命令和进度记录。本地门禁 15 个任务在 Windows 上全部通过。Linux 等提交之后的 CI（上一次是运行 45836915436，针对提交 3fe4533，verify 作业成功）。macOS 没有验证：CI 只跑 ubuntu-latest。`--live` 的恢复冒烟没有跑：本刀没有改恢复，恢复的冒烟在回放下通过。
+- 遗留：R14.4 现在在固定样本里是通过的，证据是 2026-11-27 的两次真实模型运行。mvp、read_file、resume 三份夹具没有重录，记下的指令哈希是旧指令的，R14.3 的样本 rejected-write 也来自旧指令下的录制。要不要重录这三份，由仓库所有者决定。
+- 来源声明：2026-11-27 的追记没有参考 lime 的内容，依据是本仓库需求 R14.4-S1 和 2026-11-26 的录制事实。2026-11-26 的来源声明如下。对照阅读了 lime 仓库的 internal/develop/traceable-agent-acceptance-methodology.md、internal/test/harness-evals.md、internal/aiprompts/harness-engine-governance.md，只读。取四个思路，按本仓库语境重写，没有复制原文，也没有参考它的代码：固定的任务集入口与四件套样本形状；提升脚本只产出四件套并把绝对路径换成占位路径；数据只准单向流动，每一层只读上一层；没有发生的信号不导出，不用空数组占位。"必须和应当分开、后者不挡门禁"来自本仓库需求文档的决策 D-12，不是 lime 的做法。
+- 下一刀：见路线图 2026-11-27 R14.4 缺口处置那一条。
 
 完成度: 100%

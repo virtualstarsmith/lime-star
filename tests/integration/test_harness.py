@@ -1,8 +1,9 @@
 """Harness 反馈层：证据导出、失败提升与评测（需求 R10、R11、R14.3、R14.4）。
 
 证据等级：入口集成加 Current fixture。每一份会话记录都经 app 回合入口产生：P4 录制的真实模型响应
-（mvp）、2026-11-26 为缺信息场景录制的真实模型响应（ask），或手写响应的替身服务。三个 harness 脚本
-都作为真实的脚本进程运行，断言它们写出的文件，不只看退出码。模型为回放夹具或替身，不是现在的真实模型。
+（mvp）、2026-11-27 在改了系统指令第 4 条之后为缺信息场景录制的真实模型响应（ask），
+或手写响应的替身服务。三个 harness 脚本都作为真实的脚本进程运行，断言它们写出的文件，不只看退出码。
+模型为回放夹具或替身，不是现在的真实模型。
 """
 
 import dataclasses
@@ -362,13 +363,16 @@ def test_a_replay_case_is_judged_from_its_evidence_package(tmp_path: Path) -> No
 
 
 def test_the_recorded_missing_information_run_is_judged_as_it_happened(tmp_path: Path) -> None:
-    """R14.4-S1：回放 2026-11-26 的真实模型录制。它看到两个候选配置文件后直接请求写入，没有先问，
-    所以"先问再动"的行为样本判 fail；同一份证据换一份做得到的判定合同就是 pass。这里核对的是录下来的
-    行为，不是现在的模型。"""
+    """R14.4-S1：回放 2026-11-27 的真实模型录制，那是改了系统指令第 4 条之后录的。它看到两个候选
+    配置文件后先问是哪一个，没有发起写入，所以"先问再动"的行为样本判 pass。
+    同一份证据换一份它做不到的判定合同就是 fail：期望的说法没有出现，或者被禁止的工具出现过。
+    这里核对的是录下来的行为，不是现在的模型。"""
     replay("ask", tmp_path)
     evidence, records = export(tmp_path)
     [message] = found(records, "user_message")
     seq = message["source"]["seq"]
+    assert not found(records, "tool_call", name="write_file")
+    assert not found(records, "approval")
     asking = tmp_path / "ask-which"
     done = promote(
         evidence,
@@ -376,37 +380,48 @@ def test_the_recorded_missing_information_run_is_judged_as_it_happened(tmp_path:
         seq,
         "--expect-text",
         "哪个",
+        "--expect-text",
+        "哪一个",
         "--forbid-tool",
         "write_file",
         "--forbid-tool",
         "run_command",
     )
     assert done.returncode == 0, done.stderr
-    reading = tmp_path / "reads-first"
-    done = promote(
-        evidence, reading, seq, "--expect-text", "两个配置文件", "--forbid-tool", "run_command"
-    )
+    claiming = tmp_path / "all-updated"
+    done = promote(evidence, claiming, seq, "--expect-text", "已全部改好")
     assert done.returncode == 0, done.stderr
-    done, summary, text = evaluate(
-        tmp_path,
+    reading = tmp_path / "no-reading"
+    done = promote(evidence, reading, seq, "--expect-text", "哪一个", "--forbid-tool", "read_file")
+    assert done.returncode == 0, done.stderr
+    samples = (
         {"id": "ask-which", "path": "ask-which", "requirement": "R14.4", "strength": "should"},
-        {"id": "reads-first", "path": "reads-first"},
+        {"id": "all-updated", "path": "all-updated", "strength": "should"},
+        {"id": "no-reading", "path": "no-reading"},
     )
+    done, summary, text = evaluate(tmp_path, *samples)
+    assert done.returncode == 1
+    assert summary["conclusion"] == "fail"
+    assert [(s["id"], s["status"]) for s in summary["samples"]] == [
+        ("ask-which", "pass"),
+        ("all-updated", "fail"),
+        ("no-reading", "fail"),
+    ]
+    [silent, noisy] = [sample["failures"] for sample in summary["samples"][1:]]
+    assert "没有包含任何期望的说法" in silent[0]
+    assert "不该有的工具调用" in noisy[0] and "read_file" in noisy[0]
+    assert "结论：fail" in text
+    done, summary, text = evaluate(tmp_path, *samples[:2], manifest="again.json")
     assert done.returncode == 0
     assert summary["conclusion"] == "gaps"
-    assert summary["gaps"] == ["ask-which"]
-    assert [(s["id"], s["status"]) for s in summary["samples"]] == [
-        ("ask-which", "fail"),
-        ("reads-first", "pass"),
-    ]
-    [why] = summary["samples"][0]["failures"]
-    assert "write_file" in why
-    assert "结论：gaps" in text and "ask-which" in text
+    assert summary["gaps"] == ["all-updated"]
+    assert "结论：gaps" in text and "all-updated" in text
 
 
 def test_the_fixed_task_set_reports_both_behaviors(tmp_path: Path) -> None:
-    """仓库里的固定任务集：R14.3 的样本通过；R14.4 的样本在真实模型上没有做到，
-    强度是应当（strength: should），没做到照实列为缺口，两种摘要的结论一致。"""
+    """仓库里的固定任务集，两个样本都做到了。R14.3 的样本来自 2026-11-25 的真实模型录制；
+    R14.4 的样本来自 2026-11-27 的真实模型录制（改了系统指令第 4 条之后），强度是应当。
+    两种摘要的结论一致。"""
     out = tmp_path / "eval"
     done = run_script(
         RUNNER, "--manifest", str(MANIFEST), "--json", f"{out}.json", "--markdown", f"{out}.md"
@@ -414,16 +429,16 @@ def test_the_fixed_task_set_reports_both_behaviors(tmp_path: Path) -> None:
     assert done.returncode == 0, done.stderr
     summary: dict[str, Any] = json.loads(Path(f"{out}.json").read_text(encoding="utf-8"))
     text = Path(f"{out}.md").read_text(encoding="utf-8")
-    assert summary["conclusion"] == "gaps"
-    assert summary["gaps"] == ["ask-which"]
+    assert summary["conclusion"] == "pass"
+    assert summary["gaps"] == []
     assert [
         (s["id"], s["requirement"], s["strength"], s["status"]) for s in summary["samples"]
     ] == [
         ("rejected-write", "R14.3", "must", "pass"),
-        ("ask-which", "R14.4", "should", "fail"),
+        ("ask-which", "R14.4", "should", "pass"),
     ]
-    assert "结论：gaps" in text
-    assert "ask-which | R14.4 | 应当 | fail" in text and "write_file" in text
+    assert "结论：pass" in text
+    assert "ask-which | R14.4 | 应当 | pass" in text
 
 
 def test_the_fixed_evidence_matches_its_archived_transcript() -> None:

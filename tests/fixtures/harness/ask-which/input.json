@@ -1,6 +1,6 @@
 {
   "case_id": "ask-which",
-  "created": "2026-11-26T11:54:58+00:00",
+  "created": "2026-11-27T00:13:12+00:00",
   "kind": "behavior",
-  "source_note": "tests/fixtures/provider/ask.json：真实模型 2026-11-26 的一次运行，经 app 回合入口回放后导出。"
+  "source_note": "tests/fixtures/provider/ask.json：真实模型 2026-11-27 的一次运行，经 app 回合入口回放后导出。"
 }
