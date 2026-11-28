@@ -20,6 +20,6 @@
 
 | 文档 | 状态 | 用途 |
 | --- | --- | --- |
-| `agent-practice.md` | 进行中 | 分阶段做出最小 Agent（P0 到 P7）；对应的需求见 `../prd/agent-practice.md` |
+| `agent-practice.md` | 已完成（2026-11-27） | 分阶段做出最小 Agent（P0 到 P6 交付；P7 是可选扩展，仓库所有者决定不做）；对应的需求见 `../prd/agent-practice.md` |
 
 本目录只收录当前有效的路线图；新增或删除文档时同步更新本表。

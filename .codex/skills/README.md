@@ -10,7 +10,7 @@
 | `quality-workflow` | 为一轮改动选择验证、判断证据等级、按固定格式汇报 | `internal/aiprompts/quality-workflow.md` | 启用 |
 | `acceptance-loop` | 验证一条真实用户路径是否跑通，并给出分级结论 | `internal/develop/traceable-acceptance.md` | 启用 |
 | `skill-factory` | 把重复出现的工作流提炼成新 skill | 本索引 | 启用 |
-| `release` | 准备并执行一次发版 | `internal/aiprompts/quality-workflow.md` | 骨架，路线图 P7 启用 |
+| `release` | 准备并执行一次发版 | `internal/aiprompts/quality-workflow.md` | 骨架，未启用；P7 不做，要做首个 release 时补全 |
 
 ## 入口关系
 

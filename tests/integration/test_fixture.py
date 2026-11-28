@@ -3,13 +3,12 @@ Current fixture：用录制的真实响应驱动完整主链（需求 R11.1、R1
 
 证据等级：Current fixture。模型是回放夹具：响应录自真实模型的一次会话，这里不联网，
 所以它证明的不是"真实模型现在会这样回答"，而是"真实形状的响应能走通主链"。
-四份夹具：read_file（P3 录制）、mvp（P4 录制，三个回合：主场景、拒绝写文件、失败的命令），
-ask（P6 录制，缺信息场景：两个候选配置文件，由 test_harness.py 回放），
-以及 resume（P5 录制，六个回合分在六个进程里，其中一次在等待批准时进程被结束）。
+四份夹具都在 2026-11-27 按现行的系统指令重录（glm-5.2）：read_file（P3 起的场景）、
+mvp（三个回合：主场景、拒绝写文件、失败的命令）、ask（缺信息场景：两个候选配置文件，
+由 test_harness.py 回放），以及 resume（六个回合分在六个进程里，其中一次在等待批准时进程被结束）。
 """
 
 import json
-import re
 import socket
 from collections.abc import Callable
 from pathlib import Path
@@ -32,6 +31,7 @@ from lime_star.thread_store import read
 from lime_star.thread_store.turns import NOT_CLOSED, WAITING
 from tests.integration.fake_model import FAKE_KEY
 from tests.integration.replay import BASE_URL, Replay, load, recorded_bodies, runs, turns
+from tests.integration.smoke import CLAIM
 from tests.integration.support import Died, transcript_files
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -119,10 +119,6 @@ def test_the_product_has_no_replay_switch() -> None:
 
 
 DANGEROUS = ("write_file", "run_command")
-CLAIM = re.compile(
-    r"(已经?|成功)(?:为您|帮你)?(?:在\S{0,12}?)?(?:写入|创建|新建|保存)|(?:写入|创建|新建|保存)成功"
-)
-"""把操作说成已完成的说法。中间可以夹一个地点短语，例如"已在工作目录新建"。"""
 
 
 def test_the_recorded_mvp_exchange_drives_three_turns(tmp_path: Path) -> None:
@@ -164,7 +160,7 @@ def test_the_recorded_mvp_exchange_drives_three_turns(tmp_path: Path) -> None:
 
 
 def test_the_recorded_replies_follow_the_report_rules() -> None:
-    """R14.1-S1、R14.2-S1：录制时真实模型（glm-5.2，2026-11-26）的最终回复。被拒绝的写入没有被说成已完成；
+    """R14.1-S1、R14.2-S1：录制时真实模型（glm-5.2，2026-11-27）的最终回复。被拒绝的写入没有被说成已完成；
     以退出码 1 结束的命令被指出失败了。这里核对的是录下来的回复，不是现在再问一次模型；
     现在的模型怎样回答，由冒烟脚本的 --live 去看。"""
     fixture: dict[str, Any] = load("mvp")

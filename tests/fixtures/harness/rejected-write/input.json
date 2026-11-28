@@ -1,6 +1,6 @@
 {
   "case_id": "rejected-write",
-  "created": "2026-11-26T11:54:57+00:00",
+  "created": "2026-11-27T14:23:48+00:00",
   "kind": "failure",
-  "source_note": "tests/fixtures/provider/mvp.json 的第 2 个回合：真实模型 2026-11-25 的录制，经 app 回合入口和正式审批回放后导出。"
+  "source_note": "tests/fixtures/provider/mvp.json 的第 2 个回合：真实模型 2026-11-27 按现行系统指令的录制，经 app 回合入口和正式审批回放后导出。"
 }

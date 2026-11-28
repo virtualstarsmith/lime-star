@@ -5,7 +5,7 @@ description: 准备并执行 lime-star 的一次发版，覆盖版本号、发�
 
 # 发版（骨架）
 
-状态：骨架，尚未启用。启用条件见 `internal/exec-plans/agent-practice-roadmap-plan.md` 的 P7。启用之前不得依据本 skill 执行任何 git 写操作。
+状态：骨架，尚未启用。启用条件见 `internal/roadmap/agent-practice.md` 的 P7（首个 release）；仓库所有者于 2026-11-27 决定不做 P7，本 skill 保持骨架，要做首个 release 时先补全再启用。启用之前不得依据本 skill 执行任何 git 写操作。
 
 ## 已确定的原则
 

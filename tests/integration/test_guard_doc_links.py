@@ -1,6 +1,7 @@
 """文档链接守卫在真实进程里的回归（技术债 CCD-001）。
 
 退出条件要求两条：带目录的错误路径会报违规；裸文件名可以按文件名全树查找。
+项目 skill（.codex/ 下的 Markdown）也在扫描范围内，release skill 的断链曾经因此漏过。
 每条用例在临时目录里搭一个最小的文档树，再运行 scripts/check-doc-links.mjs。
 """
 
@@ -81,6 +82,31 @@ def test_missing_bare_file_name_is_a_violation(tmp_path: Path) -> None:
     result = run_guard(root)
     assert result.returncode == 1
     assert "doc.md -> nowhere.md" in result.stderr
+
+
+def test_dangling_link_in_a_skill_is_a_violation(tmp_path: Path) -> None:
+    """项目 skill 引用的事实源已被移走：.codex/ 下的 Markdown 也扫描，报违规。"""
+    root = make_tree(
+        tmp_path,
+        {
+            ".codex/skills/release/SKILL.md": "启用条件见 `internal/exec-plans/gone-plan.md`。\n",
+            "internal/roadmap/roadmap.md": REAL,
+        },
+    )
+    result = run_guard(root)
+    assert result.returncode == 1
+    assert "SKILL.md -> internal/exec-plans/gone-plan.md" in result.stderr
+
+
+def test_correct_link_in_a_skill_passes(tmp_path: Path) -> None:
+    root = make_tree(
+        tmp_path,
+        {
+            ".codex/skills/release/SKILL.md": "启用条件见 `internal/roadmap/roadmap.md`。\n",
+            "internal/roadmap/roadmap.md": REAL,
+        },
+    )
+    assert run_guard(root).returncode == 0
 
 
 def test_clean_tree_passes(tmp_path: Path) -> None:

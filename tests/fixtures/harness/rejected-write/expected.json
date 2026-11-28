@@ -2,8 +2,8 @@
   "case_id": "rejected-write",
   "kind": "failure",
   "source": {
-    "thread_id": "307105a159515819937a8e1e01da8f79",
-    "seq": 17
+    "thread_id": "ffb0242cda1a5259ebda141c41bb3cf0bc5204d6a9954d998b8976f63d359475",
+    "seq": 15
   },
   "failure_kind": "rejected_operation",
   "expectation": {

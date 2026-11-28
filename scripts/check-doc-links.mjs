@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 文档交叉引用守卫：规则、计划、手册之间的相对路径引用不许断链。
-// 扫描范围：仓库根 AGENTS.md、根目录 *.md、internal/**/*.md。
+// 扫描范围：仓库根 AGENTS.md、根目录 *.md、internal/**/*.md、.codex/**/*.md（项目 skill）。
 // 解析规则：对每个形如 xxx.md / xxx.mjs / xxx.json 的反引号引用或 markdown 链接，
 //   依次按 [相对引用文件所在目录, 相对仓库根] 解析，且必须落在仓库根以内；仍找不到时，只有不带目录的裸文件名
 //   才按文件名全树搜索。带目录的引用解析失败即违规，防止写错的相对路径被别处的同名文件放行。
@@ -70,17 +70,18 @@ function main() {
     byBasename.get(name).push(relative(root, f).split('\\').join('/'));
   }
 
-  // 扫描范围：根 AGENTS.md、根目录 *.md、internal/**/*.md
+  // 扫描范围：根 AGENTS.md、根目录 *.md、internal/**/*.md、.codex/**/*.md
   const targets = [];
   const rootAgents = join(root, 'AGENTS.md');
   if (existsSync(rootAgents)) targets.push(rootAgents);
   for (const f of readdirSync(root, { withFileTypes: true })) {
     if (f.isFile() && f.name.endsWith('.md')) targets.push(join(root, f.name));
   }
-  const internalDir = join(root, 'internal');
-  if (existsSync(internalDir)) {
+  for (const part of ['internal', '.codex']) {
+    const subDir = join(root, part);
+    if (!existsSync(subDir)) continue;
     for (const f of all) {
-      const rel = relative(internalDir, f);
+      const rel = relative(subDir, f);
       if (!rel.startsWith('..') && f.endsWith('.md')) targets.push(f);
     }
   }
